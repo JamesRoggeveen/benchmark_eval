@@ -1,0 +1,3 @@
+{
+    "latex": "Consider the mean-field Hamiltonian: $H = H_{\\text{Kinetic}} + H_{\\text{Hartree}} +H_{\\text{Fock}}$, with each term defined below:\n$H_{\\text{Kinetic}} = \\sum_{s, k} E_s(k) c^\\dagger_s(k) c_s(k)$, where $E_s(k)=\\sum_{n} t_s(n) e^{-i k \\cdot n}$\n$H_{\\text{Hartree}} = \\frac{1}{N} \\sum_{s, s'} \\sum_{k_1, k_2} U(0) \\langle c_s^\\dagger(k_1) c_s(k_1) \\rangle c_{s'}^\\dagger(k_2) c_{s'}(k_2)$"
+}

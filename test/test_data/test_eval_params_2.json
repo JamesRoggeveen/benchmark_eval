@@ -1,0 +1,6 @@
+{
+    "input": "Find a uniformly valid approximation to the solution of $\\epsilon y'' - x y' + x^3 y = 0$ with boundary conditions $y(0) = 1$, $y(1) = 2$ in the limit $\\epsilon \\ll 1$. Use only the variables and constants given in the problem; do not define additional constants. If necessary, numerical approximations are fine. Place your final solution in a $\\boxed{}$ LaTeX environment.",
+    "solution": "$\\boxed{y = e^{\\frac{x^3}{3}} + (2-e^{1/3})e^{-(1-x)/\\epsilon}}$",
+    "parameters": "$x,\\epsilon$",
+    "model": "Gemini 2.0 Flash Thinking"
+}
