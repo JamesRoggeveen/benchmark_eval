@@ -1,0 +1,6 @@
+{
+    "input": "Find the value of x if 2x + 3 = 7. Use only the variables and constants given in the problem; do not define additional constants. Place your final solution in a $\\boxed{}$ LaTeX environment.",
+    "solution": "$\\boxed{x = 2}$",
+    "parameters": "$x$",
+    "model": "Gemini 2.0 Flash Thinking"
+} 
