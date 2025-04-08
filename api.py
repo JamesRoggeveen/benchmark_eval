@@ -9,8 +9,8 @@ import numpy as np
 import sympy as sp
 
 # Load environment variables from .env file
-from dotenv import load_dotenv
-load_dotenv()
+# from dotenv import load_dotenv
+# load_dotenv()
 
 app = Flask(__name__)
 
