@@ -28,6 +28,7 @@ COPY src/ src/
 ENV PYTHONUNBUFFERED=1
 ENV USE_LOCAL_STORAGE=false
 ENV STORAGE_BUCKET=benchmark-eval-storage
+ENV ENV=production
 
 # Note: When deployed in Google Cloud (Cloud Run, GKE, etc.), the container will 
 # automatically use the service account assigned to the resource

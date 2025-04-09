@@ -1,0 +1,17 @@
+# Development dependencies - includes production requirements plus testing tools
+-r requirements.production.txt
+
+# Environment management
+python-dotenv==1.0.0
+
+# Testing dependencies
+pytest==7.4.0
+colorama==0.4.6
+
+# Development tools
+jupyter==1.0.0
+notebook==7.0.6
+ipykernel==6.25.2
+
+# Documentation
+Sphinx==7.2.6 
