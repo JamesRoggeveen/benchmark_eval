@@ -2,5 +2,5 @@
     "input": "A doublet of strength $m$ is situated at the centre of a sphere of radius $a$. Find the radial $u$ and transversal $v$ velocities of the liquid in terms of $m$ and $a$ as a function of the spherical coordinates $r$, $\\theta$, and $\\psi$. Use only the variables and constants given in the problem; do not define additional constants. If necessary, numerical approximations are fine. Place your final solution in a $\\boxed{}$ LaTeX environment with all components of the solution separated by a semicolon ;.",
     "solution": "$\\boxed{u = m\\left(\\frac{2}{r^3} - \\frac{5}{a^3} + \\frac{3r^2}{a^5}\\right)\\cos \\theta; v = m\\left(\\frac{1}{r^3}+\\frac{5}{a^3}-\\frac{6r^2}{a^5}\\right)\\sin \\theta}$",
     "parameters": "$m, r, \\theta, a, \\psi$",
-    "model": "Gemini 2.5 Flash Thinking"
+    "model": "Gemini 2.0 Flash Thinking"
 }

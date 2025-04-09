@@ -4,8 +4,8 @@ import regex as re
 import numpy as np
 import argparse
 from typing import List, Tuple, Optional, Dict, Any, Union
-from dataclasses import dataclass, field
-from src.parser_rules import deletion_rules, function_rules, nested_rules, final_rules, known_functions
+from dataclasses import dataclass, field, asdict
+from src.parser_rules import deletion_rules, replacement_rules, function_rules, nested_rules, final_rules, known_functions
 
 class ParseError(Exception):
     """Base class for all parsing related errors"""
@@ -60,6 +60,41 @@ class ParsingResult:
     def success(self) -> bool:
         """Check if parsing was successful"""
         return self.error_message == ""
+        
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the ParsingResult to a JSON-serializable dictionary."""
+        # First convert to a dictionary using dataclasses.asdict
+        result_dict = asdict(self)
+        
+        # Add success property
+        result_dict['success'] = self.success
+        
+        # Handle sympy expressions (convert to strings)
+        if result_dict['sympy_expressions']:
+            result_dict['sympy_expressions'] = [str(expr) for expr in result_dict['sympy_expressions']]
+        
+        # Handle sympy symbols in parameter_dict
+        if result_dict['parameter_dict']:
+            param_dict = {}
+            for key, value in result_dict['parameter_dict'].items():
+                # Convert sympy symbols to strings
+                if isinstance(key, sp.Symbol):
+                    key = str(key)
+                param_dict[key] = str(value)
+            result_dict['parameter_dict'] = param_dict
+        
+        # Handle complex numbers in evaluation_results
+        if result_dict['evaluation_results']:
+            serialized_results = []
+            for value in result_dict['evaluation_results']:
+                if isinstance(value, complex):
+                    # Format complex numbers in a standard form
+                    serialized_results.append(str(value))
+                else:
+                    serialized_results.append(value)
+            result_dict['evaluation_results'] = serialized_results
+            
+        return result_dict
 
 # ===== Main Parsing Functions =====
 def extract_solution(solution_string: str) -> List[str]:
@@ -130,6 +165,10 @@ def latex_to_expression(latex_string: str) -> str:
         # Find known functions that are using implicit application to add parentheses, i.e \sin \theta -> \sin(\theta)
         function_pattern = fr'\\({"|".join(known_functions)})\s*([^{{}}\s()+\-*\/^]+)'
         current_string = re.sub(function_pattern, r' \1(\2)', current_string)
+
+        # Apply replacement rules
+        for pattern, replacement in replacement_rules.items():
+            current_string = re.sub(pattern, replacement, current_string)
         
         # Remove remaining backslashes
         current_string = re.sub(r'\\', '', current_string)
