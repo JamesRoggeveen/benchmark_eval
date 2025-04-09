@@ -140,5 +140,11 @@ test_data = [
         parameter_string="$x, \\epsilon$",
         expected_evaluation=[15.4011],
         description="Sum of exponential expressions with epsilon parameter"
+    ),
+    TestParserData(
+        solution_string="$\\boxed{y \\approx \\sqrt[3]{3} x (\\log x)^{1/3}; y \\approx -\\sqrt[3]{3} x (\\log x)^{1/3}}$",
+        parameter_string="$x$",
+        expected_evaluation=[2.55277, -2.55277],
+        description="Gemini 2.0 Flash Thinking output on test_eval.json"
     )
 ]
