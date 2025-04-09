@@ -176,3 +176,5 @@ cython_debug/
 local_storage/*
 *.DS_Store
 output/*
+
+dev/
