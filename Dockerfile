@@ -17,8 +17,8 @@ RUN apt-get update && \
 WORKDIR /app
 
 # Copy requirements and install dependencies first (for better caching)
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.production.txt .
+RUN pip install --no-cache-dir -r requirements.production.txt
 
 # Copy only the necessary application files, not tests or potential secrets
 COPY api.py .
@@ -42,4 +42,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:${PORT}/health || exit 1
 
 # Command to run the application with gunicorn using the PORT environment variable
-CMD gunicorn --bind 0.0.0.0:${PORT} api:app 
+CMD gunicorn --bind 0.0.0.0:${PORT} --timeout 300 --workers 1 --threads 4 api:app 

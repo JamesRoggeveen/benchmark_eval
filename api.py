@@ -14,12 +14,17 @@ from flask import Flask, request, jsonify, send_from_directory
 from src.latex_render import render_latex, LatexError
 from src.storage import get_storage_backend
 import src.parser as parser
-from src.evaluator import evaluate_solution, SUPPORTED_MODELS
+from src.evaluator import evaluate_solution, SUPPORTED_MODELS, query_llm
 
 app = Flask(__name__)
 
 # Initialize storage backend
 storage_client = get_storage_backend()
+
+# Global configuration dictionary for server settings
+CONFIG = {
+    "prompt_suffix": " Please return your response as a LaTeX string that can be inserted into an existing LaTeX document."
+}
 
 # Configure local file serving if using local storage
 if os.environ.get('USE_LOCAL_STORAGE', 'false').lower() == 'true':
@@ -56,6 +61,81 @@ def parse_endpoint():
         
         result = parser.evaluate_solution(input_string, parameter_str)
         return jsonify(result.to_dict())
+    except Exception as e:
+        return jsonify({"error": f"Server error: {str(e)}", "success": False}), 500
+
+@app.route('/config', methods=['GET', 'POST'])
+def config_endpoint():
+    """Get or update server configuration"""
+    # Only allow admin access to this endpoint in production
+    if os.environ.get('ENV', 'development').lower() == 'production':
+        # In a real app, you would add proper authentication here
+        admin_key = request.headers.get('X-Admin-Key')
+        if not admin_key or admin_key != os.environ.get('ADMIN_KEY', ''):
+            return jsonify({"error": "Unauthorized", "success": False}), 401
+    
+    if request.method == 'GET':
+        # Return the current configuration
+        return jsonify({
+            "success": True,
+            "config": CONFIG
+        })
+    
+    elif request.method == 'POST':
+        try:
+            data = request.get_json()
+            if not data:
+                return jsonify({"error": "No JSON data provided", "success": False}), 400
+            
+            # Update prompt suffix if provided
+            if 'prompt_suffix' in data:
+                if not isinstance(data['prompt_suffix'], str):
+                    return jsonify({"error": "prompt_suffix must be a string", "success": False}), 400
+                CONFIG['prompt_suffix'] = data['prompt_suffix']
+            
+            return jsonify({
+                "success": True,
+                "message": "Configuration updated successfully",
+                "config": CONFIG
+            })
+        except Exception as e:
+            return jsonify({"error": f"Server error: {str(e)}", "success": False}), 500
+
+@app.route('/query', methods=['POST'])
+def query_endpoint():
+    """Query an LLM with a prompt and return the response"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No JSON data provided", "success": False}), 400
+            
+        # Validate required fields
+        for key in ['prompt', 'model']:
+            error, status_code = check_field(data, key)
+            if error:
+                return jsonify({"error": error, "success": False}), status_code
+        
+        # Append configured prompt suffix to the user's prompt
+        prompt = data['prompt'] + CONFIG['prompt_suffix']
+        
+        # Query the model
+        response, is_error = query_llm(prompt, data['model'])
+        
+        if is_error:
+            return jsonify({
+                "success": False,
+                "prompt": prompt,
+                "error": response,
+                "model": data['model']
+            }), 400
+        
+        # Return successful response
+        return jsonify({
+            "success": True,
+            "prompt": prompt,
+            "response": response,
+            "model": data['model']
+        })
     except Exception as e:
         return jsonify({"error": f"Server error: {str(e)}", "success": False}), 500
 

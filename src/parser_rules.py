@@ -65,6 +65,7 @@ nested_rules = {
 final_rules = {
     r'\\Gamma\((.*?)\)': r'gamma(\1)',
     r'(?<![a-zA-Z])e(?![a-zA-Z])': r'E',
+    r'([a-zA-Z])e\^': r'\1*E^',  # Handle cases like Be^{4} -> B*E^{4}
     r'\{': r'(',
     r'\}': r')',
     r'\[': r'(',

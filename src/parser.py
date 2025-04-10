@@ -54,6 +54,7 @@ class ParsingResult:
     extracted_solutions: Optional[List[str]] = None
     intermediate_expressions: Optional[List[str]] = None
     parameter_dict: Optional[Dict[sp.Symbol, Any]] = None
+    parameter_values: Optional[Dict[sp.Symbol, Any]] = None
     evaluation_results: Optional[List[Any]] = None
     
     @property
@@ -82,6 +83,16 @@ class ParsingResult:
                     key = str(key)
                 param_dict[key] = str(value)
             result_dict['parameter_dict'] = param_dict
+            
+        # Handle sympy symbols in parameter_values
+        if result_dict['parameter_values']:
+            param_values = {}
+            for key, value in result_dict['parameter_values'].items():
+                # Convert sympy symbols to strings
+                if isinstance(key, sp.Symbol):
+                    key = str(key)
+                param_values[key] = value
+            result_dict['parameter_values'] = param_values
         
         # Handle complex numbers in evaluation_results
         if result_dict['evaluation_results']:
@@ -163,7 +174,7 @@ def latex_to_expression(latex_string: str) -> str:
             current_string = re.sub(fr'(?<=[^\s])(\\{function})', r' \1', current_string)
         
         # Find known functions that are using implicit application to add parentheses, i.e \sin \theta -> \sin(\theta)
-        function_pattern = fr'\\({"|".join(known_functions)})\s*([^{{}}\s()+\-*\/^]+)'
+        function_pattern = fr'\\({"|".join(known_functions)})(?![a-zA-Z])\s*([^{{}}\s()+\-*\/^]+)'
         current_string = re.sub(function_pattern, r' \1(\2)', current_string)
 
         # Apply replacement rules
@@ -304,6 +315,10 @@ def evaluate_solution(solution_str: str, parameter_str: str = "") -> ParsingResu
             parameter_values[result.parameter_dict['x']] = 2
         else:
             parameter_values = {symbol: np.random.uniform(1, 2) for symbol in result.parameter_dict.values()}
+        
+        # Store the actual parameter values used in the evaluation
+        result.parameter_values = parameter_values
+        
         # Reset random seed
         np.random.seed(None)
         
