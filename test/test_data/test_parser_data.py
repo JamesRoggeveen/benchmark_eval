@@ -146,5 +146,17 @@ test_data = [
         parameter_string="$x$",
         expected_evaluation=[2.55277, -2.55277],
         description="Gemini 2.0 Flash Thinking output on test_eval.json"
-    )
+    ),
+    TestParserData(
+        solution_string="$\\boxed{y(x) = 5\\cosh x + 5\\cos x}$",
+        parameter_string="$x$",
+        expected_evaluation=[16.7302],
+        description="Hyperbolic cosine and cosine function"
+    ),
+    TestParserData(
+        solution_string="$\\boxed{A e^{(x^3)/3} + (B-Ae^{-1/3})e^{-x/\\sqrt{\\epsilon}}}$",
+        parameter_string="$x,\\epsilon,A,B$",
+        expected_evaluation=[25.0121],
+        description="Uniform boundary with bad implicit multiplication of E"
+    ),
 ]
