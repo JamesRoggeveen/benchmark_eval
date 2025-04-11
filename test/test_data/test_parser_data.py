@@ -159,4 +159,23 @@ test_data = [
         expected_evaluation=[25.0121],
         description="Uniform boundary with bad implicit multiplication of E"
     ),
+    TestParserData(
+        solution_string="$\\boxed{y(x) = \\cos\\left(\\frac{1}{2\\epsilon} \\left( x\\sqrt{1+x^2} + \\text{arcsinh}(x) \\right)\\right)}$",
+        parameter_string="$x,\\epsilon$",
+        expected_evaluation=[0.0544603],
+        description="Text values in the solution string"
+    ),
+    TestParserData(
+        solution_string="$\\boxed{y(x) = \\cos\\left(\\frac{1}{2\\epsilon} \\left( x\\sqrt{1+x^2} + \\mathrm{arcsinh}(x) \\right)\\right)}$",
+        parameter_string="$x,\\epsilon$",
+        expected_evaluation=[0.0544603],
+        description="Text values in the solution string"
+    ),
+    TestParserData(
+        solution_string="$\\boxed{y \\sim \\sqrt[3]{\\frac{81}{5}} x^{4/3}; y \\sim -\\sqrt[3]{\\frac{81}{5}} x^{4/3}}$$",
+        parameter_string="$x$",
+        expected_evaluation=[6.37595,-6.37595],
+        description="Two solutions to ODE with sim"
+    ),
+    
 ]
