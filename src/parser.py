@@ -1,5 +1,5 @@
 import sympy as sp
-from sympy.parsing.sympy_parser import standard_transformations, implicit_multiplication_application, convert_xor, implicit_application
+from sympy.parsing.sympy_parser import standard_transformations, implicit_multiplication_application, convert_xor, split_symbols_custom, _token_splittable
 import regex as re
 import numpy as np
 import argparse
@@ -182,7 +182,7 @@ def latex_to_expression(latex_string: str) -> str:
             current_string = re.sub(pattern, replacement, current_string)
         
         # Remove remaining backslashes
-        current_string = re.sub(r'\\', '', current_string)
+        current_string = re.sub(r'\\', ' ', current_string)
         
         # Final validation
         if not current_string.strip():
@@ -213,10 +213,6 @@ def parse_parameters(parameter_str: str) -> Dict[str, sp.Symbol]:
     # Create symbol dictionary
     parameter_dict = {param: sp.symbols(param) for param in parameter_list}
     
-    # Ensure lowercase epsilon gets proper handling
-    if 'epsilon' in parameter_dict:
-        parameter_dict['epsilon'] = sp.symbols('epsilon')
-    
     return parameter_dict
 
 def expression_to_sympy(expr_string: str, parameter_dict: Dict[str, sp.Symbol] = None) -> sp.Expr:
@@ -244,13 +240,13 @@ def expression_to_sympy(expr_string: str, parameter_dict: Dict[str, sp.Symbol] =
             
         if not expr_string:
             raise SymPyConversionError("Expression is empty after splitting", expr_string, "post_split")
-            
-        # Parse expression
+        
+        
+        expr_string = re.sub(r'\s{2,}', ' ', expr_string)
+        # Parse expression with enhanced transformations
         transformations = (standard_transformations + 
                          (implicit_multiplication_application,
-                          convert_xor,
-                          implicit_application))
-        
+                          convert_xor))
         try:
             expr = sp.parsing.parse_expr(expr_string, local_dict=parameter_dict, transformations=transformations)
             return expr

@@ -13,14 +13,20 @@ const CONFIG = {
     statusCol: "I",        // Column I for status
     flashEquivCol: "J",    // Column J for Gemini 2.0 Flash equivalence
     flashThinkingEquivCol: "K", // Column K for Gemini 2.0 Flash Thinking equivalence
-    outputStartCol: "L"    // Column L for detailed output start
+    flash25ThinkingEquivCol: "L", // Column L for Gemini 2.5 Flash Thinking equivalence
+    outputStartCol: "M"    // Column M for detailed output start
   }
 };
 
 // Function to check if current user is an admin
 function isAdmin() {
-  const userEmail = Session.getActiveUser().getEmail();
-  return CONFIG.ADMIN_EMAILS.includes(userEmail);
+  try {
+    const userEmail = Session.getActiveUser().getEmail();
+    return CONFIG.ADMIN_EMAILS.includes(userEmail);
+  } catch (e) {
+    console.log("Could not get active user: " + e.toString());
+    return false;
+  }
 }
 
 // Function to get the API base URL
@@ -29,10 +35,15 @@ function getApiBaseUrl() {
   const apiUrl = scriptProperties.getProperty('API_BASE_URL');
   
   if (!apiUrl) {
-    // If not set, show an error message to admins or return a default URL for non-admins
-    if (isAdmin()) {
-      const ui = SpreadsheetApp.getUi();
-      ui.alert('API URL Not Configured', 'Please use the "Admin: Configure API URL" option to set up the API URL.', ui.ButtonSet.OK);
+    try {
+      // Only try to check admin status if we can get the active user
+      if (isAdmin()) {
+        const ui = SpreadsheetApp.getUi();
+        ui.alert('API URL Not Configured', 'Please use the "Admin: Configure API URL" option to set up the API URL.', ui.ButtonSet.OK);
+      }
+    } catch (e) {
+      // If we can't get the active user, just return null
+      console.log("Could not check admin status: " + e.toString());
     }
     return null;
   }
@@ -67,7 +78,7 @@ function saveSheetConfig(sheet, config) {
 
 // Function to render LaTeX to an image
 /**
- * Renders LaTeX to an image.
+ * Renders LaTeX to an image URL.
  * 
  * @param {string} latex The LaTeX string to render
  * @return {string} URL of the rendered image or error message
@@ -77,23 +88,49 @@ function RENDER_LATEX(latex) {
   if (!latex) return "";
   
   try {
+    // Ensure the API is configured
     const apiBaseUrl = getApiBaseUrl();
-    if (!apiBaseUrl) return "Error: API URL not configured";
+    if (!apiBaseUrl) {
+      console.error("API URL not configured");
+      return "Error: API URL not configured. Please contact an administrator.";
+    }
     
+    // Validate the LaTeX input
+    if (typeof latex !== 'string') {
+      console.error("Invalid LaTeX input type");
+      return "Error: Invalid LaTeX input. Must be a string.";
+    }
+    
+    // Make the API request
     const response = UrlFetchApp.fetch(apiBaseUrl + "/render", {
       method: "post",
       contentType: "application/json",
       payload: JSON.stringify({ latex: latex }),
-      muteHttpExceptions: true
+      muteHttpExceptions: true,
+      timeout: 30000 // 30 second timeout
     });
     
+    // Parse the response
     const result = JSON.parse(response.getContentText());
+    
+    // Check for success
     if (result.success && result.file_url) {
       return result.file_url;
     }
-    return `Error: ${result.error || "Unknown error"}`;
+    
+    // Handle specific error cases
+    if (result.error) {
+      console.error("API Error: " + result.error);
+      return "Error: " + result.error;
+    }
+    
+    // Unknown error
+    console.error("Unknown API response: " + JSON.stringify(result));
+    return "Error: Unknown error occurred";
+    
   } catch (e) {
-    return `Error: ${e.toString()}`;
+    console.error("RENDER_LATEX Error: " + e.toString());
+    return "Error: " + e.toString();
   }
 }
 
@@ -283,6 +320,48 @@ function callEvalAPI(problem, solution, parameters, model) {
   }
 }
 
+// Function to clear output cells for a specific row
+function clearOutputCells(sheet, row, sheetConfig, model) {
+  // Clear only the equivalence cell for the specific model
+  if (model === "Gemini 2.0 Flash") {
+    sheet.getRange(sheetConfig.flashEquivCol + row).clearContent();
+  } else if (model === "Gemini 2.0 Flash Thinking") {
+    sheet.getRange(sheetConfig.flashThinkingEquivCol + row).clearContent();
+  } else if (model === "Gemini 2.5 Flash Thinking") {
+    sheet.getRange(sheetConfig.flash25ThinkingEquivCol + row).clearContent();
+  }
+  
+  // Clear the detailed output cells
+  const outputCol = sheet.getRange(sheetConfig.outputStartCol + row).getColumn();
+  const numColumns = 8; // Number of detailed output columns
+  sheet.getRange(row, outputCol, 1, numColumns).clearContent();
+}
+
+// Function to get enabled models for a sheet
+function getEnabledModels(sheet) {
+  const sheetId = sheet.getSheetId().toString();
+  const documentProperties = PropertiesService.getDocumentProperties();
+  const enabledModels = documentProperties.getProperty('enabled_models_' + sheetId);
+  
+  if (enabledModels) {
+    return JSON.parse(enabledModels);
+  }
+  
+  // Default to all models enabled
+  return {
+    "Gemini 2.0 Flash": true,
+    "Gemini 2.0 Flash Thinking": true,
+    "Gemini 2.5 Flash Thinking": false
+  };
+}
+
+// Function to set enabled models for a sheet
+function setEnabledModels(sheet, models) {
+  const sheetId = sheet.getSheetId().toString();
+  const documentProperties = PropertiesService.getDocumentProperties();
+  documentProperties.setProperty('enabled_models_' + sheetId, JSON.stringify(models));
+}
+
 // Function to process a row with configurable columns
 function processRowWithConfig() {
   const ui = SpreadsheetApp.getUi();
@@ -313,12 +392,22 @@ function processRowWithConfig() {
   // Get column assignments for this specific sheet
   const sheetConfig = getSheetConfig(sheet);
   
+  // Get enabled models
+  const enabledModels = getEnabledModels(sheet);
+  const availableModels = Object.entries(enabledModels)
+    .filter(([_, enabled]) => enabled)
+    .map(([name]) => name);
+  
+  if (availableModels.length === 0) {
+    ui.alert('Error', 'No models are currently enabled. Please contact an administrator.', ui.ButtonSet.OK);
+    return;
+  }
+  
   // Create dialog for model selection
+  const modelOptions = availableModels.map((model, index) => `${index + 1}. ${model}`).join('\n');
   const modelResponse = ui.prompt(
     'Model Selection',
-    'Please select a model:\n' +
-    '1. Gemini 2.0 Flash\n' +
-    '2. Gemini 2.0 Flash Thinking',
+    'Please select a model:\n' + modelOptions,
     ui.ButtonSet.OK_CANCEL
   );
   
@@ -327,18 +416,14 @@ function processRowWithConfig() {
   }
   
   const modelChoice = modelResponse.getResponseText();
-  let model;
-  switch(modelChoice) {
-    case "1":
-      model = "Gemini 2.0 Flash";
-      break;
-    case "2":
-      model = "Gemini 2.0 Flash Thinking";
-      break;
-    default:
-      ui.alert('Invalid model selection. Please enter 1 or 2.');
-      return;
+  const modelIndex = parseInt(modelChoice) - 1;
+  
+  if (isNaN(modelIndex) || modelIndex < 0 || modelIndex >= availableModels.length) {
+    ui.alert('Invalid model selection. Please enter a number between 1 and ' + availableModels.length);
+    return;
   }
+  
+  const model = availableModels[modelIndex];
   
   // Only ask for the row number
   const response = ui.prompt(
@@ -358,6 +443,9 @@ function processRowWithConfig() {
     ui.alert('Invalid row number');
     return;
   }
+  
+  // Clear output cells before processing
+  clearOutputCells(sheet, row, sheetConfig, model);
   
   // Update status
   sheet.getRange(sheetConfig.statusCol + row).setValue("Processing...");
@@ -389,6 +477,8 @@ function processRowWithConfig() {
       equivCol = sheetConfig.flashEquivCol;
     } else if (model === "Gemini 2.0 Flash Thinking") {
       equivCol = sheetConfig.flashThinkingEquivCol;
+    } else if (model === "Gemini 2.5 Flash Thinking") {
+      equivCol = sheetConfig.flash25ThinkingEquivCol;
     } else {
       // Fallback to flash equivalence column
       equivCol = sheetConfig.flashEquivCol;
@@ -445,7 +535,8 @@ function processMultipleRows() {
     'Model Selection',
     'Please select a model:\n' +
     '1. Gemini 2.0 Flash\n' +
-    '2. Gemini 2.0 Flash Thinking',
+    '2. Gemini 2.0 Flash Thinking\n' +
+    '3. Gemini 2.5 Flash Thinking',
     ui.ButtonSet.OK_CANCEL
   );
   
@@ -462,8 +553,11 @@ function processMultipleRows() {
     case "2":
       model = "Gemini 2.0 Flash Thinking";
       break;
+    case "3":
+      model = "Gemini 2.5 Flash Thinking";
+      break;
     default:
-      ui.alert('Invalid model selection. Please enter 1 or 2.');
+      ui.alert('Invalid model selection. Please enter 1, 2, or 3.');
       return;
   }
   
@@ -538,6 +632,8 @@ function processMultipleRows() {
         equivCol = sheetConfig.flashEquivCol;
       } else if (model === "Gemini 2.0 Flash Thinking") {
         equivCol = sheetConfig.flashThinkingEquivCol;
+      } else if (model === "Gemini 2.5 Flash Thinking") {
+        equivCol = sheetConfig.flash25ThinkingEquivCol;
       } else {
         // Fallback to flash equivalence column
         equivCol = sheetConfig.flashEquivCol;
@@ -595,8 +691,9 @@ function setupSheet() {
     `Status column (current: ${sheetConfig.statusCol}):\n` +
     `Gemini 2.0 Flash equivalence column (current: ${sheetConfig.flashEquivCol}):\n` +
     `Gemini 2.0 Flash Thinking equivalence column (current: ${sheetConfig.flashThinkingEquivCol}):\n` +
+    `Gemini 2.5 Flash Thinking equivalence column (current: ${sheetConfig.flash25ThinkingEquivCol}):\n` +
     `Output start column (current: ${sheetConfig.outputStartCol}):\n\n` +
-    `Enter column letters separated by commas (e.g., F,G,H,I,J,K,L):`,
+    `Enter column letters separated by commas (e.g., F,G,H,I,J,K,L,M):`,
     ui.ButtonSet.OK_CANCEL
   );
   
@@ -606,8 +703,8 @@ function setupSheet() {
   
   const columns = response.getResponseText().split(',').map(col => col.trim().toUpperCase());
   
-  if (columns.length !== 7) {
-    ui.alert('Error', 'Please provide exactly 7 column letters.', ui.ButtonSet.OK);
+  if (columns.length !== 8) {
+    ui.alert('Error', 'Please provide exactly 8 column letters.', ui.ButtonSet.OK);
     return;
   }
   
@@ -628,13 +725,11 @@ function setupSheet() {
     statusCol: columns[3],
     flashEquivCol: columns[4],
     flashThinkingEquivCol: columns[5],
-    outputStartCol: columns[6]
+    flash25ThinkingEquivCol: columns[6],
+    outputStartCol: columns[7]
   };
   
   saveSheetConfig(sheet, newConfig);
-  
-  // Display configuration in the status column
-  sheet.getRange(newConfig.statusCol + "1").setValue(`Columns: P=${columns[0]}, S=${columns[1]}, Params=${columns[2]}, Status=${columns[3]}, Flash=${columns[4]}, FlashT=${columns[5]}, Out=${columns[6]}`);
   
   ui.alert('Success', `Sheet "${sheet.getName()}" configured with columns:\n` +
     `Problem: ${newConfig.problemCol}\n` +
@@ -643,10 +738,87 @@ function setupSheet() {
     `Status: ${newConfig.statusCol}\n` +
     `Gemini 2.0 Flash equivalence: ${newConfig.flashEquivCol}\n` +
     `Gemini 2.0 Flash Thinking equivalence: ${newConfig.flashThinkingEquivCol}\n` +
+    `Gemini 2.5 Flash Thinking equivalence: ${newConfig.flash25ThinkingEquivCol}\n` +
     `Output: ${newConfig.outputStartCol}`, ui.ButtonSet.OK);
 }
 
-// Create custom menu when spreadsheet opens
+// Function to register custom functions
+function registerCustomFunctions() {
+  try {
+    // Register RENDER_LATEX
+    const renderLatexFunction = {
+      name: 'RENDER_LATEX',
+      description: 'Renders LaTeX to an image URL',
+      parameters: [
+        {
+          name: 'latex',
+          description: 'The LaTeX string to render',
+          type: 'string'
+        }
+      ]
+    };
+    
+    // Register PARSE
+    const parseFunction = {
+      name: 'PARSE',
+      description: 'Parses LaTeX with custom parameters',
+      parameters: [
+        {
+          name: 'latex',
+          description: 'The LaTeX string to parse',
+          type: 'string'
+        },
+        {
+          name: 'parameters',
+          description: 'Parameters for parsing',
+          type: 'string',
+          optional: true
+        },
+        {
+          name: 'detailed',
+          description: 'Whether to return detailed output',
+          type: 'boolean',
+          optional: true
+        }
+      ]
+    };
+    
+    // Register PARSE_LATEX
+    const parseLatexFunction = {
+      name: 'PARSE_LATEX',
+      description: 'Parses LaTeX with default parameters',
+      parameters: [
+        {
+          name: 'latex',
+          description: 'The LaTeX string to parse',
+          type: 'string'
+        },
+        {
+          name: 'detailed',
+          description: 'Whether to return detailed output',
+          type: 'boolean',
+          optional: true
+        }
+      ]
+    };
+    
+    // Register the functions
+    const ui = SpreadsheetApp.getUi();
+    try {
+      ui.alert('Registering custom functions...');
+      SpreadsheetApp.getActive().getCustomFunctions().register(renderLatexFunction);
+      SpreadsheetApp.getActive().getCustomFunctions().register(parseFunction);
+      SpreadsheetApp.getActive().getCustomFunctions().register(parseLatexFunction);
+      ui.alert('Custom functions registered successfully!');
+    } catch (e) {
+      console.error('Error registering custom functions: ' + e.toString());
+    }
+  } catch (e) {
+    console.error('Error in registerCustomFunctions: ' + e.toString());
+  }
+}
+
+// Update the onOpen function to register custom functions
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   const menu = ui.createMenu('LLM Evaluation')
@@ -658,10 +830,15 @@ function onOpen() {
   if (isAdmin()) {
     menu.addSeparator()
       .addItem('Admin: Configure API URL', 'adminConfigureApiUrl')
-      .addItem('Admin: Setup Sheet Columns', 'setupSheet');
+      .addItem('Admin: Setup Sheet Columns', 'setupSheet')
+      .addItem('Admin: Toggle Model Availability', 'toggleModelAvailability')
+      .addItem('Admin: Register Functions', 'registerCustomFunctions');
   }
   
   menu.addToUi();
+  
+  // Register custom functions on open
+  registerCustomFunctions();
 }
 
 // Function for admins to configure the API URL
@@ -692,4 +869,48 @@ function adminConfigureApiUrl() {
       ui.alert('API URL cannot be empty.');
     }
   }
+}
+
+// Admin function to toggle model availability
+function toggleModelAvailability() {
+  const ui = SpreadsheetApp.getUi();
+  
+  // Verify the user is an admin
+  if (!isAdmin()) {
+    ui.alert('Error', 'You do not have permission to access this function.', ui.ButtonSet.OK);
+    return;
+  }
+  
+  const sheet = SpreadsheetApp.getActiveSheet();
+  const enabledModels = getEnabledModels(sheet);
+  
+  // Create dialog for model selection
+  const modelOptions = Object.entries(enabledModels)
+    .map(([name, enabled], index) => `${index + 1}. ${name} (${enabled ? 'Enabled' : 'Disabled'})`)
+    .join('\n');
+  
+  const modelResponse = ui.prompt(
+    'Toggle Model Availability',
+    'Select a model to toggle:\n' + modelOptions,
+    ui.ButtonSet.OK_CANCEL
+  );
+  
+  if (modelResponse.getSelectedButton() !== ui.Button.OK) {
+    return;
+  }
+  
+  const modelChoice = modelResponse.getResponseText();
+  const modelIndex = parseInt(modelChoice) - 1;
+  const modelNames = Object.keys(enabledModels);
+  
+  if (isNaN(modelIndex) || modelIndex < 0 || modelIndex >= modelNames.length) {
+    ui.alert('Invalid model selection. Please enter a number between 1 and ' + modelNames.length);
+    return;
+  }
+  
+  const modelName = modelNames[modelIndex];
+  enabledModels[modelName] = !enabledModels[modelName];
+  setEnabledModels(sheet, enabledModels);
+  
+  ui.alert('Success', `${modelName} is now ${enabledModels[modelName] ? 'enabled' : 'disabled'}.`, ui.ButtonSet.OK);
 }

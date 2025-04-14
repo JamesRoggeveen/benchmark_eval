@@ -44,7 +44,8 @@ def compare_results(actual_results, expected_results):
             is_equal = actual_results == expected_results
             return is_equal, "" if is_equal else f"Values differ: {actual_results} vs {expected_results}"
     except Exception as e:
-        return False, f"Comparison error: {str(e)}"
+        # Include the actual expression in the error message
+        return False, f"Comparison error: {str(e)}\nExpression: {actual_results}"
 
 def test_parser():
     print(f"\n{Fore.CYAN}{'='*20} TESTING PARSER {'='*20}{Style.RESET_ALL}")
@@ -77,6 +78,10 @@ def test_parser():
             
             if not result.success:
                 print(f"  {Fore.RED}✗ Parsing failed: {result.error_message} ({elapsed_time:.2f}s){Style.RESET_ALL}")
+                print(f"    {Fore.YELLOW}Solution: {solution_str}{Style.RESET_ALL}")
+                print(f"    {Fore.YELLOW}Parameters: {parameter_str}{Style.RESET_ALL}")
+                if hasattr(result, 'intermediate_expressions'):
+                    print(f"    {Fore.BLUE}Intermediate expressions: {result.intermediate_expressions}{Style.RESET_ALL}")
                 failed_cases.append(i)
                 all_pass = False
                 results.append({"id": i, "success": False, "pass": False, "time": elapsed_time})
@@ -103,8 +108,10 @@ def test_parser():
                 print(f"    {Fore.YELLOW}Expected: {expected_evaluation}{Style.RESET_ALL}")
                 print(f"    {Fore.YELLOW}Actual:   {result.evaluation_results}{Style.RESET_ALL}")
                 print(f"    {Fore.BLUE}Original: {solution_str}{Style.RESET_ALL}")
-                print(f"    {Fore.BLUE}Parsed: {result.intermediate_expressions}{Style.RESET_ALL}")
+                print(f"    {Fore.BLUE}Intermediate expressions: {result.intermediate_expressions}{Style.RESET_ALL}")
                 print(f"    {Fore.BLUE}Parameters: {param_display}{Style.RESET_ALL}")
+                if hasattr(result, 'sympy_expressions'):
+                    print(f"    {Fore.BLUE}SymPy expressions: {result.sympy_expressions}{Style.RESET_ALL}")
                 failed_cases.append(i)
                 all_pass = False
                 results.append({"id": i, "success": True, "pass": False, "time": elapsed_time})
@@ -113,6 +120,12 @@ def test_parser():
             elapsed_time = time.time() - start_time
             total_time += elapsed_time
             print(f"  {Fore.RED}✗ Exception: {str(e)} ({elapsed_time:.2f}s){Style.RESET_ALL}")
+            print(f"    {Fore.YELLOW}Solution: {solution_str}{Style.RESET_ALL}")
+            print(f"    {Fore.YELLOW}Parameters: {parameter_str}{Style.RESET_ALL}")
+            if hasattr(result, 'intermediate_expressions'):
+                print(f"    {Fore.BLUE}Intermediate expressions: {result.intermediate_expressions}{Style.RESET_ALL}")
+            if hasattr(result, 'sympy_expressions'):
+                print(f"    {Fore.BLUE}SymPy expressions: {result.sympy_expressions}{Style.RESET_ALL}")
             failed_cases.append(i)
             all_pass = False
             results.append({"id": i, "success": False, "pass": False, "time": elapsed_time})
