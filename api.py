@@ -21,9 +21,9 @@ app = Flask(__name__)
 # Initialize storage backend
 storage_client = get_storage_backend()
 
-# Global configuration dictionary for server settings
+# Global configuration dictionary for server settings, default is empty string
 CONFIG = {
-    "prompt_suffix": " Please return your response as a LaTeX string that can be inserted into an existing LaTeX document."
+    "prompt_suffix": ""
 }
 
 # Configure local file serving if using local storage

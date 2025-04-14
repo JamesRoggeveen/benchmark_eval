@@ -3,12 +3,18 @@ const CONFIG = {
   DELAY_MS: 2000,          // Delay between API calls in milliseconds
   MAX_RETRIES: 3,          // Maximum number of retries for timeout errors
   RETRY_DELAY_MS: 5000,    // Delay between retries (5 seconds)
-  ADMIN_EMAILS: ["jroggeveen@g.harvard.edu", "ek436@cornell.edu"], // Administrator email
+  ADMIN_EMAILS: ["jroggeveen@g.harvard.edu", "ek436@cornell.edu", "mpbrenner@gmail.com"], // Administrator email
   DEFAULT_COLUMNS: {       // Default column assignments
     promptCol: "A",        // Column A for prompt
-    statusCol: "M",        // Column L for status
-    geminiFlashCol: "N",   // Column M for Gemini 2.0 Flash response
-    geminiFlashThinkingCol: "P", // Column O for Gemini 2.0 Flash Thinking response
+    statusCol: "M",        // Column M for status
+    geminiFlashCol: "N",   // Column N for Gemini 2.0 Flash response
+    geminiFlashThinkingCol: "P", // Column P for Gemini 2.0 Flash Thinking response
+    gemini25FlashThinkingCol: "R", // Column R for Gemini 2.5 Flash Thinking response
+    gpt4oCol: "T",         // Column T for GPT-4o response
+    gpt4oMiniCol: "V",     // Column V for GPT-4o-mini response
+    gptO3MiniCol: "X",     // Column X for GPT-o3-mini response
+    gptO1MiniCol: "Z",     // Column Z for GPT-o1-mini response
+    gptO1Col: "AB"         // Column AB for GPT-o1 response
   }
 };
 
@@ -108,20 +114,6 @@ function updatePromptSuffix() {
     return;
   }
   
-  // Check if API URL and admin key are configured
-  const apiBaseUrl = getApiBaseUrl();
-  const adminKey = getAdminKey();
-  
-  if (!apiBaseUrl) {
-    ui.alert('Error', 'API URL is not configured. Please configure it first.', ui.ButtonSet.OK);
-    return;
-  }
-  
-  if (!adminKey) {
-    ui.alert('Error', 'Admin key is not configured. Please configure it first.', ui.ButtonSet.OK);
-    return;
-  }
-  
   const response = ui.prompt(
     'Prompt Suffix Configuration (ADMIN ONLY)',
     'Enter the new prompt suffix to be added to all queries:',
@@ -130,71 +122,24 @@ function updatePromptSuffix() {
   
   if (response.getSelectedButton() === ui.Button.OK) {
     const promptSuffix = response.getResponseText().trim();
-    
-    try {
-      const apiResponse = UrlFetchApp.fetch(apiBaseUrl + "/config", {
-        method: "post",
-        contentType: "application/json",
-        headers: {
-          "X-Admin-Key": adminKey
-        },
-        payload: JSON.stringify({ 
-          prompt_suffix: promptSuffix
-        }),
-        muteHttpExceptions: true
-      });
-      
-      const result = JSON.parse(apiResponse.getContentText());
-      
-      if (result.success) {
-        ui.alert('Success', 'Prompt suffix updated successfully!', ui.ButtonSet.OK);
-      } else {
-        ui.alert('Error', 'Failed to update prompt suffix: ' + (result.error || 'Unknown error'), ui.ButtonSet.OK);
-      }
-    } catch (e) {
-      ui.alert('Error', 'Failed to update prompt suffix: ' + e.toString(), ui.ButtonSet.OK);
-    }
+    const documentProperties = PropertiesService.getDocumentProperties();
+    documentProperties.setProperty('prompt_suffix', promptSuffix);
+    ui.alert('Success', 'Prompt suffix updated successfully!', ui.ButtonSet.OK);
   }
 }
 
 // Function to view the current prompt suffix (public)
 function viewPromptSuffix() {
   const ui = SpreadsheetApp.getUi();
-  
-  // Check if API URL is configured
-  const apiBaseUrl = getApiBaseUrl();
-  
-  if (!apiBaseUrl) {
-    ui.alert('Error', 'API URL is not configured. Please contact an administrator.', ui.ButtonSet.OK);
-    return;
-  }
-  
-  // Get admin key - it might be needed for authentication even for viewing
-  const adminKey = getAdminKey();
-  
-  try {
-    // Prepare headers with admin key if available
-    const headers = {};
-    if (adminKey) {
-      headers["X-Admin-Key"] = adminKey;
-    }
-    
-    const apiResponse = UrlFetchApp.fetch(apiBaseUrl + "/config", {
-      method: "get",
-      headers: headers,
-      muteHttpExceptions: true
-    });
-    
-    const result = JSON.parse(apiResponse.getContentText());
-    
-    if (result.success && result.config) {
-      ui.alert('Current Prompt Suffix', result.config.prompt_suffix || '(No suffix configured)', ui.ButtonSet.OK);
-    } else {
-      ui.alert('Error', 'Failed to retrieve prompt suffix: ' + (result.error || 'Unknown error'), ui.ButtonSet.OK);
-    }
-  } catch (e) {
-    ui.alert('Error', 'Failed to retrieve prompt suffix: ' + e.toString(), ui.ButtonSet.OK);
-  }
+  const documentProperties = PropertiesService.getDocumentProperties();
+  const promptSuffix = documentProperties.getProperty('prompt_suffix') || '(No suffix configured)';
+  ui.alert('Current Prompt Suffix', promptSuffix, ui.ButtonSet.OK);
+}
+
+// Function to get the current prompt suffix
+function getPromptSuffix() {
+  const documentProperties = PropertiesService.getDocumentProperties();
+  return documentProperties.getProperty('prompt_suffix') || '';
 }
 
 // Function to render LaTeX to an image
@@ -233,6 +178,36 @@ function RENDER_LATEX(latex) {
   }
 }
 
+// Function to get enabled models for a sheet
+function getEnabledModels(sheet) {
+  const sheetId = sheet.getSheetId().toString();
+  const documentProperties = PropertiesService.getDocumentProperties();
+  const enabledModels = documentProperties.getProperty('enabled_models_' + sheetId);
+  
+  if (enabledModels) {
+    return JSON.parse(enabledModels);
+  }
+  
+  // Default to only Gemini models enabled
+  return {
+    "Gemini 2.0 Flash": true,
+    "Gemini 2.0 Flash Thinking": true,
+    "Gemini 2.5 Flash Thinking": true,
+    "GPT-4o": false,
+    "GPT-4o-mini": false,
+    "GPT-o3-mini": false,
+    "GPT-o1-mini": false,
+    "GPT-o1": false
+  };
+}
+
+// Function to set enabled models for a sheet
+function setEnabledModels(sheet, models) {
+  const sheetId = sheet.getSheetId().toString();
+  const documentProperties = PropertiesService.getDocumentProperties();
+  documentProperties.setProperty('enabled_models_' + sheetId, JSON.stringify(models));
+}
+
 // Function to query LLM for a single row
 function queryLLM() {
   const ui = SpreadsheetApp.getUi();
@@ -263,13 +238,25 @@ function queryLLM() {
   // Get column assignments for this specific sheet
   const sheetConfig = getSheetConfig(sheet);
   
-  // Create dialog for model selection
+  // Get enabled models
+  const enabledModels = getEnabledModels(sheet);
+  const availableModels = Object.entries(enabledModels)
+    .filter(([_, enabled]) => enabled)
+    .map(([name]) => name);
+  
+  if (availableModels.length === 0) {
+    ui.alert('Error', 'No models are currently enabled. Please contact an administrator.', ui.ButtonSet.OK);
+    return;
+  }
+  
+  // Create a simple dialog with radio buttons
+  const modelOptions = availableModels.map((model, index) => 
+    `[${index + 1}] ${model}`
+  ).join('\n');
+  
   const modelResponse = ui.prompt(
-    'Model Selection',
-    'Please select a model:\n' +
-    '1. Gemini 2.0 Flash\n' +
-    '2. Gemini 2.0 Flash Thinking\n' +
-    '3. Both models',
+    'Select Model',
+    'Please select a model by entering its number:\n\n' + modelOptions,
     ui.ButtonSet.OK_CANCEL
   );
   
@@ -278,35 +265,28 @@ function queryLLM() {
   }
   
   const modelChoice = modelResponse.getResponseText();
-  let modelsToQuery = [];
-  switch(modelChoice) {
-    case "1":
-      modelsToQuery = ["Gemini 2.0 Flash"];
-      break;
-    case "2":
-      modelsToQuery = ["Gemini 2.0 Flash Thinking"];
-      break;
-    case "3":
-      modelsToQuery = ["Gemini 2.0 Flash", "Gemini 2.0 Flash Thinking"];
-      break;
-    default:
-      ui.alert('Invalid model selection. Please enter 1, 2, or 3.');
-      return;
+  const modelIndex = parseInt(modelChoice) - 1;
+  
+  if (isNaN(modelIndex) || modelIndex < 0 || modelIndex >= availableModels.length) {
+    ui.alert('Invalid model selection. Please enter a number between 1 and ' + availableModels.length);
+    return;
   }
   
-  // Only ask for the row number
-  const response = ui.prompt(
+  const model = availableModels[modelIndex];
+  
+  // Now ask for the row number
+  const rowResponse = ui.prompt(
     'Row Selection',
     'Please enter the row number to process:',
     ui.ButtonSet.OK_CANCEL
   );
   
-  if (response.getSelectedButton() !== ui.Button.OK) {
+  if (rowResponse.getSelectedButton() !== ui.Button.OK) {
     return;
   }
   
   // Parse row number
-  const rowNum = response.getResponseText().trim();
+  const rowNum = rowResponse.getResponseText().trim();
   const row = parseInt(rowNum);
   if (isNaN(row) || row < 1) {
     ui.alert('Invalid row number');
@@ -325,30 +305,38 @@ function queryLLM() {
   }
   
   try {
-    // Process each model
-    for (const model of modelsToQuery) {
-      // Call the query API
-      const apiResult = callQueryAPI(prompt, model);
-      
-      if (!apiResult.success) {
-        sheet.getRange(sheetConfig.statusCol + row).setValue("Error: " + (apiResult.error || "API call failed"));
-        continue;
-      }
-      
+    // Call the query API
+    const apiResult = callQueryAPI(prompt, model);
+    
+    if (!apiResult.success) {
+      sheet.getRange(sheetConfig.statusCol + row).setValue("Error: " + (apiResult.error || "API call failed"));
+    } else {
       // Determine which column to write the response to
       let responseCol;
       if (model === "Gemini 2.0 Flash") {
         responseCol = sheetConfig.geminiFlashCol;
       } else if (model === "Gemini 2.0 Flash Thinking") {
         responseCol = sheetConfig.geminiFlashThinkingCol;
+      } else if (model === "Gemini 2.5 Flash Thinking") {
+        responseCol = sheetConfig.gemini25FlashThinkingCol;
+      } else if (model === "GPT-4o") {
+        responseCol = sheetConfig.gpt4oCol;
+      } else if (model === "GPT-4o-mini") {
+        responseCol = sheetConfig.gpt4oMiniCol;
+      } else if (model === "GPT-o3-mini") {
+        responseCol = sheetConfig.gptO3MiniCol;
+      } else if (model === "GPT-o1-mini") {
+        responseCol = sheetConfig.gptO1MiniCol;
+      } else if (model === "GPT-o1") {
+        responseCol = sheetConfig.gptO1Col;
       }
       
-      // Write the model response to the appropriate column - now using just response property
+      // Write the model response to the appropriate column
       sheet.getRange(responseCol + row).setValue(apiResult.result.response || "");
+      
+      // Update status
+      sheet.getRange(sheetConfig.statusCol + row).setValue("Complete");
     }
-    
-    // Update status
-    sheet.getRange(sheetConfig.statusCol + row).setValue("Complete");
   } catch (e) {
     sheet.getRange(sheetConfig.statusCol + row).setValue("Error: " + e.toString());
   }
@@ -365,11 +353,15 @@ function callQueryAPI(prompt, model) {
       };
     }
     
+    // Get the prompt suffix and append it to the prompt
+    const promptSuffix = getPromptSuffix();
+    const fullPrompt = promptSuffix ? `${prompt} ${promptSuffix}` : prompt;
+    
     const response = UrlFetchApp.fetch(apiBaseUrl + "/query", {
       method: "post",
       contentType: "application/json",
       payload: JSON.stringify({
-        prompt: prompt,
+        prompt: fullPrompt,
         model: model
       }),
       muteHttpExceptions: true
@@ -409,8 +401,14 @@ function setupColumns() {
     `Prompt column (current: ${sheetConfig.promptCol}):\n` +
     `Status column (current: ${sheetConfig.statusCol}):\n` +
     `Gemini 2.0 Flash response column (current: ${sheetConfig.geminiFlashCol}):\n` +
-    `Gemini 2.0 Flash Thinking response column (current: ${sheetConfig.geminiFlashThinkingCol}):\n\n` +
-    `Enter column letters separated by commas (e.g., A,B,L,N):`,
+    `Gemini 2.0 Flash Thinking response column (current: ${sheetConfig.geminiFlashThinkingCol}):\n` +
+    `Gemini 2.5 Flash Thinking response column (current: ${sheetConfig.gemini25FlashThinkingCol}):\n` +
+    `GPT-4o response column (current: ${sheetConfig.gpt4oCol}):\n` +
+    `GPT-4o-mini response column (current: ${sheetConfig.gpt4oMiniCol}):\n` +
+    `GPT-o3-mini response column (current: ${sheetConfig.gptO3MiniCol}):\n` +
+    `GPT-o1-mini response column (current: ${sheetConfig.gptO1MiniCol}):\n` +
+    `GPT-o1 response column (current: ${sheetConfig.gptO1Col}):\n\n` +
+    `Enter column letters separated by commas (e.g., A,M,N,P,R,T,V,X,Z,AB):`,
     ui.ButtonSet.OK_CANCEL
   );
   
@@ -420,8 +418,8 @@ function setupColumns() {
   
   const columns = response.getResponseText().split(',').map(col => col.trim().toUpperCase());
   
-  if (columns.length !== 4) {
-    ui.alert('Error', 'Please provide exactly 4 column letters.', ui.ButtonSet.OK);
+  if (columns.length !== 10) {
+    ui.alert('Error', 'Please provide exactly 10 column letters.', ui.ButtonSet.OK);
     return;
   }
   
@@ -439,19 +437,36 @@ function setupColumns() {
     promptCol: columns[0],
     statusCol: columns[1],
     geminiFlashCol: columns[2],
-    geminiFlashThinkingCol: columns[3]
+    geminiFlashThinkingCol: columns[3],
+    gemini25FlashThinkingCol: columns[4],
+    gpt4oCol: columns[5],
+    gpt4oMiniCol: columns[6],
+    gptO3MiniCol: columns[7],
+    gptO1MiniCol: columns[8],
+    gptO1Col: columns[9]
   };
   
   saveSheetConfig(sheet, newConfig);
   
   // Display configuration in the status column
-  sheet.getRange(newConfig.statusCol + "1").setValue(`Columns: Prompt=${columns[0]}, Status=${columns[1]}, Flash=${columns[2]}, FlashThinking=${columns[3]}`);
+  sheet.getRange(newConfig.statusCol + "1").setValue(
+    `Columns: Prompt=${columns[0]}, Status=${columns[1]}, ` +
+    `Flash=${columns[2]}, FlashT=${columns[3]}, Flash25T=${columns[4]}, ` +
+    `GPT4o=${columns[5]}, GPT4oM=${columns[6]}, GPT3M=${columns[7]}, ` +
+    `GPT1M=${columns[8]}, GPT1=${columns[9]}`
+  );
   
   ui.alert('Success', `Sheet "${sheet.getName()}" configured with columns:\n` +
     `Prompt: ${newConfig.promptCol}\n` +
     `Status: ${newConfig.statusCol}\n` +
     `Gemini 2.0 Flash: ${newConfig.geminiFlashCol}\n` +
-    `Gemini 2.0 Flash Thinking: ${newConfig.geminiFlashThinkingCol}`, ui.ButtonSet.OK);
+    `Gemini 2.0 Flash Thinking: ${newConfig.geminiFlashThinkingCol}\n` +
+    `Gemini 2.5 Flash Thinking: ${newConfig.gemini25FlashThinkingCol}\n` +
+    `GPT-4o: ${newConfig.gpt4oCol}\n` +
+    `GPT-4o-mini: ${newConfig.gpt4oMiniCol}\n` +
+    `GPT-o3-mini: ${newConfig.gptO3MiniCol}\n` +
+    `GPT-o1-mini: ${newConfig.gptO1MiniCol}\n` +
+    `GPT-o1: ${newConfig.gptO1Col}`, ui.ButtonSet.OK);
 }
 
 // Function for admins to configure the API URL
@@ -514,13 +529,22 @@ function processMultipleRows() {
   // Get column assignments for this specific sheet
   const sheetConfig = getSheetConfig(sheet);
   
+  // Get enabled models
+  const enabledModels = getEnabledModels(sheet);
+  const availableModels = Object.entries(enabledModels)
+    .filter(([_, enabled]) => enabled)
+    .map(([name]) => name);
+  
+  if (availableModels.length === 0) {
+    ui.alert('Error', 'No models are currently enabled. Please contact an administrator.', ui.ButtonSet.OK);
+    return;
+  }
+  
   // Create dialog for model selection
+  const modelOptions = availableModels.map((model, index) => `${index + 1}. ${model}`).join('\n');
   const modelResponse = ui.prompt(
     'Model Selection',
-    'Please select a model:\n' +
-    '1. Gemini 2.0 Flash\n' +
-    '2. Gemini 2.0 Flash Thinking\n' +
-    '3. Both models',
+    'Please select a model:\n' + modelOptions,
     ui.ButtonSet.OK_CANCEL
   );
   
@@ -529,21 +553,14 @@ function processMultipleRows() {
   }
   
   const modelChoice = modelResponse.getResponseText();
-  let modelsToQuery = [];
-  switch(modelChoice) {
-    case "1":
-      modelsToQuery = ["Gemini 2.0 Flash"];
-      break;
-    case "2":
-      modelsToQuery = ["Gemini 2.0 Flash Thinking"];
-      break;
-    case "3":
-      modelsToQuery = ["Gemini 2.0 Flash", "Gemini 2.0 Flash Thinking"];
-      break;
-    default:
-      ui.alert('Invalid model selection. Please enter 1, 2, or 3.');
-      return;
+  const modelIndex = parseInt(modelChoice) - 1;
+  
+  if (isNaN(modelIndex) || modelIndex < 0 || modelIndex >= availableModels.length) {
+    ui.alert('Invalid model selection. Please enter a number between 1 and ' + availableModels.length);
+    return;
   }
+  
+  const model = availableModels[modelIndex];
   
   // Ask for start and end rows
   const response = ui.prompt(
@@ -580,22 +597,30 @@ function processMultipleRows() {
     }
     
     try {
-      // Process each model
-      for (const model of modelsToQuery) {
-        // Call the query API
-        const apiResult = callQueryAPI(prompt, model);
-        
-        if (!apiResult.success) {
-          sheet.getRange(sheetConfig.statusCol + currentRow).setValue("Error: " + (apiResult.error || "API call failed"));
-          continue;
-        }
-        
+      // Call the query API
+      const apiResult = callQueryAPI(prompt, model);
+      
+      if (!apiResult.success) {
+        sheet.getRange(sheetConfig.statusCol + currentRow).setValue("Error: " + (apiResult.error || "API call failed"));
+      } else {
         // Determine which column to write the response to
         let responseCol;
         if (model === "Gemini 2.0 Flash") {
           responseCol = sheetConfig.geminiFlashCol;
         } else if (model === "Gemini 2.0 Flash Thinking") {
           responseCol = sheetConfig.geminiFlashThinkingCol;
+        } else if (model === "Gemini 2.5 Flash Thinking") {
+          responseCol = sheetConfig.gemini25FlashThinkingCol;
+        } else if (model === "GPT-4o") {
+          responseCol = sheetConfig.gpt4oCol;
+        } else if (model === "GPT-4o-mini") {
+          responseCol = sheetConfig.gpt4oMiniCol;
+        } else if (model === "GPT-o3-mini") {
+          responseCol = sheetConfig.gptO3MiniCol;
+        } else if (model === "GPT-o1-mini") {
+          responseCol = sheetConfig.gptO1MiniCol;
+        } else if (model === "GPT-o1") {
+          responseCol = sheetConfig.gptO1Col;
         }
         
         // Write the model response to the appropriate column - now using just response property
@@ -616,6 +641,50 @@ function processMultipleRows() {
   sheet.getRange(sheetConfig.statusCol + startRow).setValue(`Completed rows ${startRow} to ${endRow}`);
 }
 
+// Add the toggleModelAvailability function
+function toggleModelAvailability() {
+  const ui = SpreadsheetApp.getUi();
+  
+  // Verify the user is an admin
+  if (!isAdmin()) {
+    ui.alert('Error', 'You do not have permission to access this function.', ui.ButtonSet.OK);
+    return;
+  }
+  
+  const sheet = SpreadsheetApp.getActiveSheet();
+  const enabledModels = getEnabledModels(sheet);
+  
+  // Create dialog for model selection
+  const modelOptions = Object.entries(enabledModels)
+    .map(([name, enabled], index) => `${index + 1}. ${name} (${enabled ? 'Enabled' : 'Disabled'})`)
+    .join('\n');
+  
+  const modelResponse = ui.prompt(
+    'Toggle Model Availability',
+    'Select a model to toggle:\n' + modelOptions,
+    ui.ButtonSet.OK_CANCEL
+  );
+  
+  if (modelResponse.getSelectedButton() !== ui.Button.OK) {
+    return;
+  }
+  
+  const modelChoice = modelResponse.getResponseText();
+  const modelIndex = parseInt(modelChoice) - 1;
+  const modelNames = Object.keys(enabledModels);
+  
+  if (isNaN(modelIndex) || modelIndex < 0 || modelIndex >= modelNames.length) {
+    ui.alert('Invalid model selection. Please enter a number between 1 and ' + modelNames.length);
+    return;
+  }
+  
+  const modelName = modelNames[modelIndex];
+  enabledModels[modelName] = !enabledModels[modelName];
+  setEnabledModels(sheet, enabledModels);
+  
+  ui.alert('Success', `${modelName} is now ${enabledModels[modelName] ? 'enabled' : 'disabled'}.`, ui.ButtonSet.OK);
+}
+
 // Create custom menu when spreadsheet opens
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
@@ -630,7 +699,8 @@ function onOpen() {
       .addItem('Admin: Configure API URL', 'adminConfigureApiUrl')
       .addItem('Admin: Set Admin Key', 'setAdminKey')
       .addItem('Admin: Update Prompt Suffix', 'updatePromptSuffix')
-      .addItem('Admin: Setup Columns', 'setupColumns');
+      .addItem('Admin: Setup Columns', 'setupColumns')
+      .addItem('Admin: Toggle Model Availability', 'toggleModelAvailability');
   }
   
   menu.addToUi();

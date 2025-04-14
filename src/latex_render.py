@@ -3,11 +3,59 @@ import subprocess
 import uuid
 import tempfile
 import shutil
+import re
 from pdf2image import convert_from_path
 
 class LatexError(Exception):
     """Custom exception for LaTeX-related errors"""
     pass
+
+def clean_latex_string(latex_string):
+    """
+    Clean the LaTeX string by handling markdown code blocks and ensuring proper equation environment.
+    
+    Args:
+        latex_string (str): The raw LaTeX string that might contain markdown code blocks
+        
+    Returns:
+        str: Cleaned LaTeX string
+    """
+    # Split the string into lines
+    lines = latex_string.split('\n')
+    cleaned_lines = []
+    
+    # Track if we're in a markdown code block
+    in_code_block = False
+    code_block_content = []
+    
+    for line in lines:
+        # Check for start of markdown code block
+        if line.strip().startswith('```latex'):
+            in_code_block = True
+            continue
+        # Check for end of markdown code block
+        elif line.strip() == '```' and in_code_block:
+            in_code_block = False
+            # Process the code block content
+            content = '\n'.join(code_block_content)
+            # Check if it already has an equation environment
+            if not re.search(r'\\begin\{equation\}|\$', content):
+                content = f"\\begin{{equation}}\n{content}\n\\end{{equation}}"
+            cleaned_lines.append(content)
+            code_block_content = []
+            continue
+        
+        if in_code_block:
+            code_block_content.append(line)
+        else:
+            # Convert markdown bold and italic to LaTeX
+            line = re.sub(r'\*\*([^*]+)\*\*', r'\\textbf{\1}', line)  # Bold text
+            cleaned_lines.append(line)
+    
+    # Join the lines back together
+    cleaned_string = '\n'.join(cleaned_lines)
+    
+    return cleaned_string.strip()
 
 def check_latex_installation():
     """Check if pdflatex is installed and accessible"""
@@ -36,6 +84,9 @@ def render_latex(latex_string, output_dir):
     """
     if not check_latex_installation():
         raise LatexError("pdflatex is not installed or not accessible")
+
+    # Clean the LaTeX string
+    latex_string = clean_latex_string(latex_string)
 
     # Ensure the output folder exists
     os.makedirs(output_dir, exist_ok=True)

@@ -177,5 +177,10 @@ test_data = [
         expected_evaluation=[6.37595,-6.37595],
         description="Two solutions to ODE with sim"
     ),
-    
+    TestParserData(
+        solution_string="$\\boxed{\\pi R \\delta_{ij}; 0; \\frac{\\pi R}{4} (\\delta_{ij}\\delta_{kl} + \\delta_{ik}\\delta_{jl} + \\delta_{il}\\delta_{jk})}$",
+        parameter_string="$n, R, \\delta_{ij}, \\delta_{kl}, \\delta_{ik}, \\delta_{jl}, \\delta_{il}, \\delta_{jk}$",
+        expected_evaluation=[10.614264613057003, 0, 9.314767438067218],
+        description="Kronecker delta with multiple solutions without spaces"
+    )
 ]
