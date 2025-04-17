@@ -83,8 +83,7 @@ def query_openai(input_string: str, model_name: str) -> Tuple[str, bool]:
         client = OpenAI(api_key=OPENAI_API_KEY)
         response = client.chat.completions.create(
             model=model_id,
-            messages=[{"role": "user", "content": input_string}],
-            temperature=0.0
+            messages=[{"role": "user", "content": input_string}]
         )
         return response.choices[0].message.content, False
     except Exception as e:

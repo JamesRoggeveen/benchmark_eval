@@ -55,6 +55,36 @@ def clean_latex_string(latex_string):
     # Join the lines back together
     cleaned_string = '\n'.join(cleaned_lines)
     
+    latex_document_strings = [
+        r"\\begin\{document\}", 
+        r"\\end\{document\}", 
+        r"\\documentclass\{([^{}]*)\}", 
+        r"\\usepackage\{([^{}]*)\}",
+        r"\\title\{([^{}]*)\}",
+        r"\\author\{([^{}]*)\}",
+        r"\\date\{([^{}]*)\}",
+        r"\\maketitle",
+        r"\\tableofcontents",
+        r"\\bibliography\{([^{}]*)\}",
+        r"\\bibliographystyle\{([^{}]*)\}",
+        r"\\begin\{abstract\}",
+        r"\\end\{abstract\}",
+        r"\\appendix",
+        r"\\frontmatter",
+        r"\\mainmatter",
+        r"\\backmatter",
+        r"\\begin\{thebibliography\}",
+        r"\\end\{thebibliography\}",
+        r"\\newcommand\{([^{}]*)\}\{([^{}]*)\}",  # Basic newcommand
+        r"\\renewcommand\{([^{}]*)\}\{([^{}]*)\}", # Basic renewcommand
+        r"\\input\{([^{}]*)\}",
+        r"\\include\{([^{}]*)\}",
+        r"\\documentstyle\{([^{}]*)\}"  # Old LaTeX 2.09 style
+    ]
+
+    for latex_document_string in latex_document_strings:
+        cleaned_string = re.sub(latex_document_string, "", cleaned_string)
+
     return cleaned_string.strip()
 
 def check_latex_installation():

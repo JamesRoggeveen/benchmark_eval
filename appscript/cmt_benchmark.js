@@ -104,18 +104,12 @@ function getAdminKey() {
   return documentProperties.getProperty('admin_key');
 }
 
-// Function to update the prompt suffix (admin only)
+// Function to update the prompt suffix (now available to all users)
 function updatePromptSuffix() {
   const ui = SpreadsheetApp.getUi();
   
-  // Verify the user is an admin
-  if (!isAdmin()) {
-    ui.alert('Error', 'You do not have permission to access this function.', ui.ButtonSet.OK);
-    return;
-  }
-  
   const response = ui.prompt(
-    'Prompt Suffix Configuration (ADMIN ONLY)',
+    'Prompt Suffix Configuration',
     'Enter the new prompt suffix to be added to all queries:',
     ui.ButtonSet.OK_CANCEL
   );
@@ -142,6 +136,40 @@ function getPromptSuffix() {
   return documentProperties.getProperty('prompt_suffix') || '';
 }
 
+// Function to set the API key (admin only)
+function setApiKey() {
+  const ui = SpreadsheetApp.getUi();
+  
+  // Verify the user is an admin
+  if (!isAdmin()) {
+    ui.alert('Error', 'You do not have permission to access this function.', ui.ButtonSet.OK);
+    return;
+  }
+  
+  const response = ui.prompt(
+    'API Key Configuration (ADMIN ONLY)',
+    'Enter the API key for authentication:',
+    ui.ButtonSet.OK_CANCEL
+  );
+  
+  if (response.getSelectedButton() === ui.Button.OK) {
+    const apiKey = response.getResponseText().trim();
+    if (apiKey) {
+      const documentProperties = PropertiesService.getDocumentProperties();
+      documentProperties.setProperty('api_key', apiKey);
+      ui.alert('API key updated successfully!');
+    } else {
+      ui.alert('API key cannot be empty.');
+    }
+  }
+}
+
+// Function to get the API key (private)
+function getApiKey() {
+  const documentProperties = PropertiesService.getDocumentProperties();
+  return documentProperties.getProperty('api_key');
+}
+
 // Function to render LaTeX to an image
 /**
  * Renders LaTeX to an image.
@@ -154,16 +182,20 @@ function RENDER_LATEX(latex) {
   if (!latex) return "";
   
   try {
-    // For custom functions, we can't use Session.getActiveUser() to check admin status
-    // Instead, directly access the API URL from script properties
     const scriptProperties = PropertiesService.getScriptProperties();
     const apiBaseUrl = scriptProperties.getProperty('API_BASE_URL');
     
     if (!apiBaseUrl) return "Error: API URL not configured";
     
+    const apiKey = getApiKey();
+    if (!apiKey) return "Error: API key not configured";
+    
     const response = UrlFetchApp.fetch(apiBaseUrl + "/render", {
       method: "post",
       contentType: "application/json",
+      headers: {
+        'X-API-Key': apiKey
+      },
       payload: JSON.stringify({ latex: latex }),
       muteHttpExceptions: true
     });
@@ -208,6 +240,41 @@ function setEnabledModels(sheet, models) {
   documentProperties.setProperty('enabled_models_' + sheetId, JSON.stringify(models));
 }
 
+// Function to get response column for a model
+function getResponseColumn(sheetConfig, model) {
+  if (model === "Gemini 2.0 Flash") {
+    return sheetConfig.geminiFlashCol;
+  } else if (model === "Gemini 2.0 Flash Thinking") {
+    return sheetConfig.geminiFlashThinkingCol;
+  } else if (model === "Gemini 2.5 Flash Thinking") {
+    return sheetConfig.gemini25FlashThinkingCol;
+  } else if (model === "GPT-4o") {
+    return sheetConfig.gpt4oCol;
+  } else if (model === "GPT-4o-mini") {
+    return sheetConfig.gpt4oMiniCol;
+  } else if (model === "GPT-o3-mini") {
+    return sheetConfig.gptO3MiniCol;
+  } else if (model === "GPT-o1-mini") {
+    return sheetConfig.gptO1MiniCol;
+  } else if (model === "GPT-o1") {
+    return sheetConfig.gptO1Col;
+  }
+  return null;
+}
+
+// Function to clear response cell for a specific row and model
+function clearResponseCell(sheet, row, sheetConfig, model) {
+  const responseCol = getResponseColumn(sheetConfig, model);
+  
+  // Clear the response cell if we have a valid column
+  if (responseCol) {
+    sheet.getRange(responseCol + row).clearContent();
+  }
+  
+  // Clear the status cell
+  sheet.getRange(sheetConfig.statusCol + row).clearContent();
+}
+
 // Function to query LLM for a single row
 function queryLLM() {
   const ui = SpreadsheetApp.getUi();
@@ -249,10 +316,11 @@ function queryLLM() {
     return;
   }
   
-  // Create a simple dialog with radio buttons
-  const modelOptions = availableModels.map((model, index) => 
-    `[${index + 1}] ${model}`
-  ).join('\n');
+  // Create dialog for model selection, adding "All Enabled Models" option
+  const modelOptions = [`[0] All Enabled Models`]
+    .concat(availableModels.map((model, index) => 
+      `[${index + 1}] ${model}`
+    )).join('\n');
   
   const modelResponse = ui.prompt(
     'Select Model',
@@ -265,14 +333,15 @@ function queryLLM() {
   }
   
   const modelChoice = modelResponse.getResponseText();
-  const modelIndex = parseInt(modelChoice) - 1;
+  const modelIndex = parseInt(modelChoice);
   
-  if (isNaN(modelIndex) || modelIndex < 0 || modelIndex >= availableModels.length) {
-    ui.alert('Invalid model selection. Please enter a number between 1 and ' + availableModels.length);
+  if (isNaN(modelIndex) || modelIndex < 0 || modelIndex > availableModels.length) {
+    ui.alert('Invalid model selection. Please enter a number between 0 and ' + availableModels.length);
     return;
   }
   
-  const model = availableModels[modelIndex];
+  // Get selected models (either all or single)
+  const selectedModels = modelIndex === 0 ? availableModels : [availableModels[modelIndex - 1]];
   
   // Now ask for the row number
   const rowResponse = ui.prompt(
@@ -293,9 +362,6 @@ function queryLLM() {
     return;
   }
   
-  // Update status
-  sheet.getRange(sheetConfig.statusCol + row).setValue("Processing...");
-  
   // Get prompt from the specified column
   const prompt = sheet.getRange(sheetConfig.promptCol + row).getValue();
   
@@ -304,41 +370,62 @@ function queryLLM() {
     return;
   }
   
-  try {
-    // Call the query API
-    const apiResult = callQueryAPI(prompt, model);
+  // Process each selected model
+  for (const model of selectedModels) {
+    // Get the response column for this model
+    const responseCol = getResponseColumn(sheetConfig, model);
+    if (!responseCol) {
+      sheet.getRange(sheetConfig.statusCol + row).setValue(`Error: Could not determine response column for ${model}`);
+      continue;
+    }
     
-    if (!apiResult.success) {
-      sheet.getRange(sheetConfig.statusCol + row).setValue("Error: " + (apiResult.error || "API call failed"));
-    } else {
-      // Determine which column to write the response to
-      let responseCol;
-      if (model === "Gemini 2.0 Flash") {
-        responseCol = sheetConfig.geminiFlashCol;
-      } else if (model === "Gemini 2.0 Flash Thinking") {
-        responseCol = sheetConfig.geminiFlashThinkingCol;
-      } else if (model === "Gemini 2.5 Flash Thinking") {
-        responseCol = sheetConfig.gemini25FlashThinkingCol;
-      } else if (model === "GPT-4o") {
-        responseCol = sheetConfig.gpt4oCol;
-      } else if (model === "GPT-4o-mini") {
-        responseCol = sheetConfig.gpt4oMiniCol;
-      } else if (model === "GPT-o3-mini") {
-        responseCol = sheetConfig.gptO3MiniCol;
-      } else if (model === "GPT-o1-mini") {
-        responseCol = sheetConfig.gptO1MiniCol;
-      } else if (model === "GPT-o1") {
-        responseCol = sheetConfig.gptO1Col;
+    // Clear previous response before processing
+    clearResponseCell(sheet, row, sheetConfig, model);
+    
+    // Update status
+    sheet.getRange(sheetConfig.statusCol + row).setValue(`Processing ${model}...`);
+    
+    try {
+      // Call the query API
+      const apiResult = callQueryAPI(prompt, model);
+      
+      if (!apiResult.success) {
+        // API call succeeded but returned an error
+        const errorMsg = apiResult.error || "Unknown error";
+        sheet.getRange(responseCol + row).setValue("Error: " + errorMsg);
+        sheet.getRange(sheetConfig.statusCol + row).setValue(`Error (${model}): ${errorMsg}`);
+        continue;
+      }
+      
+      // Check if we have a valid result object
+      if (!apiResult.result) {
+        const errorMsg = "No result returned from API";
+        sheet.getRange(responseCol + row).setValue("Error: " + errorMsg);
+        sheet.getRange(sheetConfig.statusCol + row).setValue(`Error (${model}): ${errorMsg}`);
+        continue;
       }
       
       // Write the model response to the appropriate column
       sheet.getRange(responseCol + row).setValue(apiResult.result.response || "");
+      // Update status for this model
+      sheet.getRange(sheetConfig.statusCol + row).setValue(`Complete (${model})`);
       
-      // Update status
-      sheet.getRange(sheetConfig.statusCol + row).setValue("Complete");
+      // Add delay between model calls if processing multiple models
+      if (selectedModels.length > 1) {
+        Utilities.sleep(CONFIG.DELAY_MS);
+      }
+      
+    } catch (e) {
+      // API call failed entirely
+      const errorMsg = e.toString();
+      sheet.getRange(sheetConfig.statusCol + row).setValue(`Error (${model}): ${errorMsg}`);
+      sheet.getRange(responseCol + row).setValue("Error: " + errorMsg);
     }
-  } catch (e) {
-    sheet.getRange(sheetConfig.statusCol + row).setValue("Error: " + e.toString());
+  }
+  
+  // Update final status if multiple models were processed
+  if (selectedModels.length > 1) {
+    sheet.getRange(sheetConfig.statusCol + row).setValue("Completed all models");
   }
 }
 
@@ -353,6 +440,14 @@ function callQueryAPI(prompt, model) {
       };
     }
     
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      return {
+        success: false,
+        error: "API key not configured"
+      };
+    }
+    
     // Get the prompt suffix and append it to the prompt
     const promptSuffix = getPromptSuffix();
     const fullPrompt = promptSuffix ? `${prompt} ${promptSuffix}` : prompt;
@@ -360,6 +455,9 @@ function callQueryAPI(prompt, model) {
     const response = UrlFetchApp.fetch(apiBaseUrl + "/query", {
       method: "post",
       contentType: "application/json",
+      headers: {
+        'X-API-Key': apiKey
+      },
       payload: JSON.stringify({
         prompt: fullPrompt,
         model: model
@@ -585,55 +683,59 @@ function processMultipleRows() {
   
   // Process each row
   for (let currentRow = startRow; currentRow <= endRow; currentRow++) {
-    // Update status
-    sheet.getRange(sheetConfig.statusCol + currentRow).setValue("Processing...");
-    
-    // Get prompt from the specified column
-    const prompt = sheet.getRange(sheetConfig.promptCol + currentRow).getValue();
-    
-    if (!prompt) {
-      sheet.getRange(sheetConfig.statusCol + currentRow).setValue("Skipped: Empty prompt");
-      continue;
-    }
-    
     try {
+      // Get prompt from the specified column
+      const prompt = sheet.getRange(sheetConfig.promptCol + currentRow).getValue();
+      
+      if (!prompt) {
+        sheet.getRange(sheetConfig.statusCol + currentRow).setValue("Error: Empty prompt");
+        continue;
+      }
+      
+      // Get the response column for this model
+      const responseCol = getResponseColumn(sheetConfig, model);
+      if (!responseCol) {
+        sheet.getRange(sheetConfig.statusCol + currentRow).setValue("Error: Could not determine response column");
+        continue;
+      }
+      
+      // Clear previous response before processing
+      clearResponseCell(sheet, currentRow, sheetConfig, model);
+      
+      // Update status
+      sheet.getRange(sheetConfig.statusCol + currentRow).setValue("Processing...");
+      
       // Call the query API
       const apiResult = callQueryAPI(prompt, model);
       
       if (!apiResult.success) {
-        sheet.getRange(sheetConfig.statusCol + currentRow).setValue("Error: " + (apiResult.error || "API call failed"));
-      } else {
-        // Determine which column to write the response to
-        let responseCol;
-        if (model === "Gemini 2.0 Flash") {
-          responseCol = sheetConfig.geminiFlashCol;
-        } else if (model === "Gemini 2.0 Flash Thinking") {
-          responseCol = sheetConfig.geminiFlashThinkingCol;
-        } else if (model === "Gemini 2.5 Flash Thinking") {
-          responseCol = sheetConfig.gemini25FlashThinkingCol;
-        } else if (model === "GPT-4o") {
-          responseCol = sheetConfig.gpt4oCol;
-        } else if (model === "GPT-4o-mini") {
-          responseCol = sheetConfig.gpt4oMiniCol;
-        } else if (model === "GPT-o3-mini") {
-          responseCol = sheetConfig.gptO3MiniCol;
-        } else if (model === "GPT-o1-mini") {
-          responseCol = sheetConfig.gptO1MiniCol;
-        } else if (model === "GPT-o1") {
-          responseCol = sheetConfig.gptO1Col;
-        }
-        
-        // Write the model response to the appropriate column - now using just response property
-        sheet.getRange(responseCol + currentRow).setValue(apiResult.result.response || "");
+        // API call succeeded but returned an error
+        const errorMsg = apiResult.error || "Unknown error";
+        sheet.getRange(responseCol + currentRow).setValue("Error: " + errorMsg);
+        sheet.getRange(sheetConfig.statusCol + currentRow).setValue("Error: " + errorMsg);
+        continue;
       }
       
+      // Check if we have a valid result object
+      if (!apiResult.result) {
+        const errorMsg = "No result returned from API";
+        sheet.getRange(responseCol + currentRow).setValue("Error: " + errorMsg);
+        sheet.getRange(sheetConfig.statusCol + currentRow).setValue("Error: " + errorMsg);
+        continue;
+      }
+      
+      // Write the model response to the appropriate column
+      sheet.getRange(responseCol + currentRow).setValue(apiResult.result.response || "");
       // Update status
       sheet.getRange(sheetConfig.statusCol + currentRow).setValue("Complete");
       
       // Add delay between requests
       Utilities.sleep(CONFIG.DELAY_MS);
     } catch (e) {
-      sheet.getRange(sheetConfig.statusCol + currentRow).setValue("Error: " + e.toString());
+      // API call failed entirely
+      const errorMsg = e.toString();
+      sheet.getRange(sheetConfig.statusCol + currentRow).setValue("Error: " + errorMsg);
+      sheet.getRange(responseCol + currentRow).setValue("Error: " + errorMsg);
     }
   }
   
@@ -691,14 +793,15 @@ function onOpen() {
   const menu = ui.createMenu('LLM Query')
     .addItem('Query Single Row', 'queryLLM')
     .addItem('Query Multiple Rows', 'processMultipleRows')
-    .addItem('View Current Prompt Suffix', 'viewPromptSuffix');
+    .addItem('View Current Prompt Suffix', 'viewPromptSuffix')
+    .addItem('Update Prompt Suffix', 'updatePromptSuffix');
   
   // Only show admin options to admins
   if (isAdmin()) {
     menu.addSeparator()
       .addItem('Admin: Configure API URL', 'adminConfigureApiUrl')
       .addItem('Admin: Set Admin Key', 'setAdminKey')
-      .addItem('Admin: Update Prompt Suffix', 'updatePromptSuffix')
+      .addItem('Admin: Set API Key', 'setApiKey')
       .addItem('Admin: Setup Columns', 'setupColumns')
       .addItem('Admin: Toggle Model Availability', 'toggleModelAvailability');
   }

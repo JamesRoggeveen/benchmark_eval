@@ -1,0 +1,4 @@
+{
+    "prompt": "Consider a two-dimensional triangular lattice with a mean-field Hamiltonian described in momentum space. The Brillouin zone of this lattice forms a hexagon. What are the coordinates of the six Brillouin zone corners ($K$ and $K'$ points) for this lattice structure? Round your answers to 2 decimal places, and separate all these coordinates with a comma, like (x1,y1), (x2,y2), ...",
+    "model": "Gemini 2.0 Flash Thinking"
+}
