@@ -88,49 +88,31 @@ function RENDER_LATEX(latex) {
   if (!latex) return "";
   
   try {
-    // Ensure the API is configured
-    const apiBaseUrl = getApiBaseUrl();
-    if (!apiBaseUrl) {
-      console.error("API URL not configured");
-      return "Error: API URL not configured. Please contact an administrator.";
-    }
+    const scriptProperties = PropertiesService.getScriptProperties();
+    const apiBaseUrl = scriptProperties.getProperty('API_BASE_URL');
     
-    // Validate the LaTeX input
-    if (typeof latex !== 'string') {
-      console.error("Invalid LaTeX input type");
-      return "Error: Invalid LaTeX input. Must be a string.";
-    }
+    if (!apiBaseUrl) return "Error: API URL not configured";
     
-    // Make the API request
+    const apiKey = getApiKey();
+    if (!apiKey) return "Error: API key not configured";
+    
     const response = UrlFetchApp.fetch(apiBaseUrl + "/render", {
       method: "post",
       contentType: "application/json",
+      headers: {
+        'X-API-Key': apiKey
+      },
       payload: JSON.stringify({ latex: latex }),
-      muteHttpExceptions: true,
-      timeout: 30000 // 30 second timeout
+      muteHttpExceptions: true
     });
     
-    // Parse the response
     const result = JSON.parse(response.getContentText());
-    
-    // Check for success
     if (result.success && result.file_url) {
       return result.file_url;
     }
-    
-    // Handle specific error cases
-    if (result.error) {
-      console.error("API Error: " + result.error);
-      return "Error: " + result.error;
-    }
-    
-    // Unknown error
-    console.error("Unknown API response: " + JSON.stringify(result));
-    return "Error: Unknown error occurred";
-    
+    return `Error: ${result.error || "Unknown error"}`;
   } catch (e) {
-    console.error("RENDER_LATEX Error: " + e.toString());
-    return "Error: " + e.toString();
+    return `Error: ${e.toString()}`;
   }
 }
 
@@ -151,9 +133,15 @@ function PARSE(latex, parameters = "", detailed = true) {
     const apiBaseUrl = getApiBaseUrl();
     if (!apiBaseUrl) return detailed ? [[false, "Error: API URL not configured", "", "", ""]] : [[false]];
     
+    const apiKey = getApiKey();
+    if (!apiKey) return detailed ? [[false, "Error: API key not configured", "", "", ""]] : [[false]];
+    
     const response = UrlFetchApp.fetch(apiBaseUrl + "/parse", {
       method: "post",
       contentType: "application/json",
+      headers: {
+        'X-API-Key': apiKey
+      },
       payload: JSON.stringify({ 
         input: latex,
         parameters: parameters
@@ -294,9 +282,20 @@ function callEvalAPI(problem, solution, parameters, model) {
       };
     }
     
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      return {
+        success: false,
+        error: "API key not configured"
+      };
+    }
+    
     const response = UrlFetchApp.fetch(apiBaseUrl + "/eval", {
       method: "post",
       contentType: "application/json",
+      headers: {
+        'X-API-Key': apiKey
+      },
       payload: JSON.stringify({
         input: problem,
         solution: solution,
@@ -385,7 +384,7 @@ function processRowWithConfig() {
       }
     } else {
       ui.alert('Error', 'The API URL is not configured. Please contact an administrator.', ui.ButtonSet.OK);
-      return;
+        return;
     }
   }
   
@@ -458,9 +457,9 @@ function processRowWithConfig() {
   if (!problem || !solution) {
     sheet.getRange(sheetConfig.statusCol + row).setValue("Error: Empty input");
     return;
-  }
-  
-  try {
+      }
+      
+      try {
     const apiResult = callEvalAPI(problem, solution, parameters, model);
     
     if (!apiResult.success) {
@@ -518,7 +517,7 @@ function processMultipleRows() {
         adminConfigureApiUrl();
         // If they just set it up, continue, otherwise return
         if (!getApiBaseUrl()) return;
-      } else {
+        } else {
         return;
       }
     } else {
@@ -832,6 +831,7 @@ function onOpen() {
       .addItem('Admin: Configure API URL', 'adminConfigureApiUrl')
       .addItem('Admin: Setup Sheet Columns', 'setupSheet')
       .addItem('Admin: Toggle Model Availability', 'toggleModelAvailability')
+      .addItem('Admin: Set API Key', 'setApiKey')
       .addItem('Admin: Register Functions', 'registerCustomFunctions');
   }
   
@@ -913,4 +913,38 @@ function toggleModelAvailability() {
   setEnabledModels(sheet, enabledModels);
   
   ui.alert('Success', `${modelName} is now ${enabledModels[modelName] ? 'enabled' : 'disabled'}.`, ui.ButtonSet.OK);
+}
+
+// Function to set the API key (admin only)
+function setApiKey() {
+  const ui = SpreadsheetApp.getUi();
+  
+  // Verify the user is an admin
+  if (!isAdmin()) {
+    ui.alert('Error', 'You do not have permission to access this function.', ui.ButtonSet.OK);
+    return;
+  }
+  
+  const response = ui.prompt(
+    'API Key Configuration (ADMIN ONLY)',
+    'Enter the API key for authentication:',
+    ui.ButtonSet.OK_CANCEL
+  );
+  
+  if (response.getSelectedButton() === ui.Button.OK) {
+    const apiKey = response.getResponseText().trim();
+    if (apiKey) {
+      const documentProperties = PropertiesService.getDocumentProperties();
+      documentProperties.setProperty('api_key', apiKey);
+      ui.alert('API key updated successfully!');
+    } else {
+      ui.alert('API key cannot be empty.');
+    }
+  }
+}
+
+// Function to get the API key (private)
+function getApiKey() {
+  const documentProperties = PropertiesService.getDocumentProperties();
+  return documentProperties.getProperty('api_key');
 }
