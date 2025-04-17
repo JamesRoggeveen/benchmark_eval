@@ -15,11 +15,19 @@ from src.latex_render import render_latex, LatexError
 from src.storage import get_storage_backend
 import src.parser as parser
 from src.evaluator import evaluate_solution, SUPPORTED_MODELS, query_llm
+from functools import wraps
+import hmac
+import secrets
+import time
+from google.cloud import secretmanager
 
 app = Flask(__name__)
 
 # Initialize storage backend
 storage_client = get_storage_backend()
+
+# Initialize Secret Manager client
+secret_client = secretmanager.SecretManagerServiceClient()
 
 # Global configuration dictionary for server settings, default is empty string
 CONFIG = {
@@ -48,7 +56,66 @@ def check_field(data, key):
         return f"{key} string is empty", 400
     return None, 200  # Return None for error and 200 for status when check passes
 
+def get_project_id():
+    """Get the current Google Cloud project ID"""
+    return os.environ.get('GOOGLE_CLOUD_PROJECT')
+
+def get_secret(secret_id, version_id="latest"):
+    """Get a secret from Secret Manager"""
+    try:
+        project_id = get_project_id()
+        name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
+        response = secret_client.access_secret_version(request={"name": name})
+        return response.payload.data.decode("UTF-8")
+    except Exception as e:
+        print(f"Error accessing secret {secret_id}: {e}")
+        return None
+
+def load_api_keys():
+    """Load API keys from Secret Manager"""
+    try:
+        # Get the API keys secret
+        api_keys_str = get_secret('api-keys')
+        if not api_keys_str:
+            print("Warning: No API keys configured")
+            return set()
+            
+        # Convert comma-separated string to set
+        return set(key.strip() for key in api_keys_str.split(',') if key.strip())
+    except Exception as e:
+        print(f"Error loading API keys: {e}")
+        return set()
+
+def require_api_key(f):
+    """Decorator to require API key for endpoints"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Skip auth in development mode unless explicitly configured
+        if os.environ.get('ENV', 'development').lower() == 'development' and not os.environ.get('REQUIRE_AUTH_IN_DEV'):
+            return f(*args, **kwargs)
+            
+        api_key = request.headers.get('X-API-Key')
+        if not api_key:
+            return jsonify({
+                "error": "Missing API key",
+                "success": False
+            }), 401
+            
+        # Load valid API keys
+        valid_keys = load_api_keys()
+        
+        # Check if key is valid
+        if not valid_keys or api_key not in valid_keys:
+            return jsonify({
+                "error": "Invalid API key",
+                "success": False
+            }), 401
+            
+        return f(*args, **kwargs)
+    return decorated_function
+
 @app.route('/parse', methods=['POST'])
+@require_api_key
 def parse_endpoint():
     """Parse and evaluate a LaTeX solution string"""
     try:
@@ -102,6 +169,7 @@ def config_endpoint():
             return jsonify({"error": f"Server error: {str(e)}", "success": False}), 500
 
 @app.route('/query', methods=['POST'])
+@require_api_key
 def query_endpoint():
     """Query an LLM with a prompt and return the response"""
     try:
@@ -140,6 +208,7 @@ def query_endpoint():
         return jsonify({"error": f"Server error: {str(e)}", "success": False}), 500
 
 @app.route('/eval', methods=['POST'])
+@require_api_key
 def eval_endpoint():
     """Evaluate an LLM's answer against a reference solution"""
     try:
@@ -165,6 +234,7 @@ def eval_endpoint():
         return jsonify({"error": f"Server error: {str(e)}", "success": False}), 500
 
 @app.route('/render', methods=['POST'])
+@require_api_key
 def render_endpoint():
     """API endpoint for rendering LaTeX"""
     try:
