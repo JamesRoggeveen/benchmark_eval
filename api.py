@@ -14,7 +14,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from src.latex_render import render_latex, LatexError
 from src.storage import get_storage_backend
 import src.parser as parser
-from src.evaluator import evaluate_solution, SUPPORTED_MODELS, query_llm
+from src.evaluator import evaluate_solution, SUPPORTED_MODELS, query_llm, evaluate_solution_cmt_numerics
 
 app = Flask(__name__)
 
@@ -158,6 +158,33 @@ def eval_endpoint():
         
         # Evaluate the solution
         result = evaluate_solution(query_string=data['input'], solution_string=data['solution'], parameter_string=parameter_str, model_name=data['model'])
+        
+        # Convert the result to a dictionary and return
+        return jsonify(result.to_dict())
+    except Exception as e:
+        return jsonify({"error": f"Server error: {str(e)}", "success": False}), 500
+
+@app.route('/eval_cmt_numerics', methods=['POST'])
+def eval_cmt_endpoint():
+    """Evaluate an LLM's answer against a reference solution"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No JSON data provided", "success": False}), 400
+            
+        # Validate required fields
+        for key in ['input', 'solution', 'model']:
+            error, status_code = check_field(data, key)
+            if error:
+                return jsonify({"error": error, "success": False}), status_code
+        
+        # Get parameters with default empty string
+        parameter_str = data.get('parameters', '')
+        
+        # Evaluate the solution
+        result = evaluate_solution_cmt_numerics(query_string=data['input'], solution_string=data['solution'], parameter_string=parameter_str, model_name=data['model'])
+        print('print: result')
+        print(result)
         
         # Convert the result to a dictionary and return
         return jsonify(result.to_dict())
