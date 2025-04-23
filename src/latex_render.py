@@ -133,6 +133,7 @@ def render_latex(latex_string, output_dir):
 \\usepackage{{amsmath}}
 \\usepackage{{amssymb}}
 \\usepackage{{physics}}
+\\usepackage{{bm}}
 \\begin{{document}}
 {latex_string}
 \\end{{document}}
