@@ -182,5 +182,17 @@ test_data = [
         parameter_string="$n, R, \\delta_{ij}, \\delta_{kl}, \\delta_{ik}, \\delta_{jl}, \\delta_{il}, \\delta_{jk}$",
         expected_evaluation=[10.614264613057003, 0, 9.314767438067218],
         description="Kronecker delta with multiple solutions without spaces"
+    ),
+    TestParserData(
+        solution_string="$\\boxed{y(x) = x^2 - 1 - \\sqrt{1 + (1 - x^2)^2} + 3 sech((\\frac{1 - x}{\\sqrt{2\\epsilon}} + \\tanh^{-1} \\sqrt{\\frac{2}{3}}))^2 + 3 sech((\\frac{1 + x}{\\sqrt{2\\epsilon}} + \\tanh^{-1} \\sqrt{\\frac{2}{3}}))^2 + 1}$$",
+        parameter_string="$x,\\epsilon$",
+        expected_evaluation=[3.51664963],
+        description="Squared sech function"
+    ),
+    TestParserData(
+        solution_string="$\\boxed{y(x) = x^2 - 1 - \\sqrt{1 + (1 - x^2)^2} + 3 sech^2((\\frac{1 - x}{\\sqrt{2\\epsilon}} + \\tanh^{-1} \\sqrt{\\frac{2}{3}})) + 3 sech^2((\\frac{1 + x}{\\sqrt{2\\epsilon}} + \\tanh^{-1} \\sqrt{\\frac{2}{3}})) + 1}$$",
+        parameter_string="$x,\\epsilon$",
+        expected_evaluation=[3.51664963],
+        description="Squared sech function with interior square"
     )
 ]
