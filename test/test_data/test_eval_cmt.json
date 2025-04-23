@@ -1,0 +1,6 @@
+{
+    "input": "We are interested in solving the self-consistency equation for Hartree-Fock mean-field theory on a 2D triangular lattice associated with the following mean-field Hamiltonian $H = H_{\\text{Kinetic}} + H_{\\text{Hartree}} +H_{\\text{Fock}}$, with $H_{\\text{Kinetic}} = \\sum_{s, k} E_s(k) c^\\dagger_s(k) c_s(k)$, where $E_s(k)=\\sum_{n} t_s(n) e^{-i k \\cdot n}$ with the spin index $s = \\{\\uparrow, \\downarrow\\}$ and momentum $k$. The mean-field terms are $H_{\\text{Hartree}} = \\frac{1}{N} \\sum_{s, s'} \\sum_{k_1, k_2} U(0) \\langle c_s^\\dagger(k_1) c_s(k_1) \\rangle c_{s'}^\\dagger(k_2) c_{s'}(k_2)$ $H_{\\text{Fock}} = -\\frac{1}{N} \\sum_{s, s'} \\sum_{k_1, k_2} U(k_1 - k_2) \\langle c_s^\\dagger(k_1) c_{s'}(k_1) \\rangle c_{s'}^\\dagger(k_2) c_s(k_2)$, where $U(k) = \\sum_{n} U_n e^{-i k \\cdot n}$ is the interaction strength in the momentum basis. What would be the dimension of the matrix associated with each momentum $k$ that should be diagonalized, if you are to solve the self-consistency equation numerically? Print your answer in numbers.  Please render your answer in LaTeX format and place your final solution in a $\\boxed{}$ LaTeX environment. There should only be one $\\boxed{}$ environment.",
+    "solution": "2",
+    "parameters": "",
+    "model": "Gemini 2.0 Flash Thinking"
+} 
