@@ -194,5 +194,11 @@ test_data = [
         parameter_string="$x,\\epsilon$",
         expected_evaluation=[3.51664963],
         description="Squared sech function with interior square"
+    ),
+    TestParserData(
+        solution_string="$\\boxed{y(x) = \\cos^2 x}$$",
+        parameter_string="$x$",
+        expected_evaluation=[0.173178],
+        description="Squared cosine function"
     )
 ]

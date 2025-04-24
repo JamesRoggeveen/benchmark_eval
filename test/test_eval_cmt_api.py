@@ -20,8 +20,8 @@ project_root = os.path.abspath(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.append(project_root)
 
 # API endpoint configuration
-# API_BASE_URL = os.environ.get('API_BASE_URL', 'http://localhost:8080')
-API_BASE_URL = os.environ.get('API_BASE_URL', 'http://localhost:5000')
+API_BASE_URL = os.environ.get('API_BASE_URL', 'http://localhost:8080')
+# API_BASE_URL = os.environ.get('API_BASE_URL', 'http://localhost:5000')
 EVAL_ENDPOINT = f"{API_BASE_URL}/eval_cmt_numerics"
 
 def check_api_health():
