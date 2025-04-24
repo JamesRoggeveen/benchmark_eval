@@ -5,7 +5,7 @@ import numpy as np
 import argparse
 from typing import List, Tuple, Optional, Dict, Any, Union
 from dataclasses import dataclass, field, asdict
-from src.parser_rules import deletion_rules, replacement_rules, function_rules, nested_rules, final_rules, known_functions
+from src.parser_rules import deletion_rules, replacement_rules, function_rules, nested_rules, final_rules, known_functions, intermediate_functions
 
 class ParseError(Exception):
     """Base class for all parsing related errors"""
@@ -174,8 +174,15 @@ def latex_to_expression(latex_string: str) -> str:
             current_string = re.sub(fr'(?<=[^\s])(\\{function})', r' \1', current_string)
         
         # Find known functions that are using implicit application to add parentheses, i.e \sin \theta -> \sin(\theta)
-        function_pattern = fr'\\({"|".join(known_functions)})(?![a-zA-Z])\s*([^{{}}\s()+\-*\/^]+)'
+        function_pattern = fr'(?:\\)?({"|".join(known_functions)})(?![a-zA-Z])\s*([^{{}}\s()+\-*\/^]+)'
         current_string = re.sub(function_pattern, r' \1(\2)', current_string)
+
+        # Replace intermediate functions with the square of the argument of the function to solve issues like cos^2 x not parsing. This needs to be done after the implicit application is resolved. Thus, we use intermediate functions to earlier replace all instances of squared trig functions with another name.
+        for function, replacement in intermediate_functions.items():
+            pattern = re.compile(
+                fr'{function}(?P<content>(?P<paren>\((?:[^()]+|(?&paren))*\)))'
+            )
+            current_string = pattern.sub(fr'{replacement}\g<content>^2', current_string)
 
         # Apply replacement rules
         for pattern, replacement in replacement_rules.items():

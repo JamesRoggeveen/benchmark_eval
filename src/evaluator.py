@@ -96,7 +96,7 @@ def query_gemini(input_string: str, model_name: str) -> Tuple[str, bool]:
     try:
         genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel(f'models/{model_id}')
-        response = model.generate_content(input_string)
+        response = model.generate_content(input_string,request_options={"timeout": 1000})
         return response.text, False
     except Exception as e:
         return f"Error querying {model_name}: {str(e)}", True

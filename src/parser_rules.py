@@ -49,7 +49,8 @@ function_rules ={
     r'\\pi':r'pi',
     r'\\i':r'I',
     r'\\(sin|cos|tan|csc|sec|cot|sinh|cosh|tanh|coth|sech|csch)\^\{-1\}': r'arc\1',
-    r'arc(sin|cos|tan|csc|sec|cot|sinh|cosh|tanh|coth|sech|csch)': r'a\1'
+    r'arc(sin|cos|tan|csc|sec|cot|sinh|cosh|tanh|coth|sech|csch)': r'a\1',
+    r'(?:\\)?(sin|cos|tan|csc|sec|cot|sinh|cosh|tanh|coth|sech|csch)\^(?:\{)?2(?:\})?': r'sq\1'
 }
 
 # Format nested LaTeX expressions by repeatedly evaluating rules, stopping when no changes are made
@@ -74,11 +75,18 @@ final_rules = {
     r'\]': r')'
 }
 
+intermediate_functions = {
+    'sqsin':'sin', 'sqcos':'cos', 'sqtan':'tan', 'sqcsc':'csc', 'sqsec':'sec', 'sqcot':'cot',
+    'sqsinh':'sinh', 'sqcosh':'cosh', 'sqtanh':'tanh', 'sqcoth':'coth', 'sqsech':'sech', 'sqcsch':'csch'
+}
+
 # List of known functions to be handled by Sympy
-known_functions = [
+sympy_functions = [
     'sin', 'cos', 'tan', 'csc', 'sec', 'cot',
     'sinh', 'cosh', 'tanh', 'coth', 'sech', 'csch',
     'asin', 'acos', 'atan', 'acsc', 'asec', 'acot',
     'asinh', 'acosh', 'atanh', 'acoth', 'asech', 'acsch',
     'log', 'ln', 'exp', 'sqrt', 'gamma'
 ]
+
+known_functions = sympy_functions + list(intermediate_functions.keys())
