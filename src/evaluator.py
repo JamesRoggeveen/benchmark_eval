@@ -11,6 +11,7 @@ import src.parser as parser
 import src.parser_cmt as parser_cmt
 from src.parser import ParsingResult
 from openai import OpenAI
+from collections import Counter
 # Get the API key from environment variable
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
@@ -171,3 +172,25 @@ def evaluate_solution_cmt_numerics(query_string: str, solution_string: str, para
     except Exception as e:
         result.error_message = f"Error comparing evaluation results: {str(e)}"
         return result
+    
+def compare_latex_expressions(latex_expr_1:str, solution_string:str, parameter_string:str, function_string:str) -> EvaluationResult:
+    """Compare two sets of latex expressions using Counters. This hash map comparison relies on the fact that
+    the resulting sympy strings must be identical for the two expressions to be equivalent. This is a potential point of failure but results from the fact that Sympy equals does not work for expressions with non-commutative symbols. For now we simply expand all sympy expressions but in the future we should build a more robust set of rewrite rules to ensure equivalent expressions render the same Sympy expression."""
+
+    result = EvaluationResult()
+    parsed_expression_1 = parser.solution_to_sympy(latex_expr_1, parameter_string, function_string)
+    result.model_result = parsed_expression_1
+    parsed_solution = parser.solution_to_sympy(solution_string, parameter_string, function_string)
+    result.solution_result = parsed_solution
+    parsed_expression_1 = parsed_expression_1.sympy_expressions
+    parsed_solution = parsed_solution.sympy_expressions
+    # Need to pass error if the expressions do not return a list of len (i.e. they are just None)
+    if len(parsed_expression_1) != len(parsed_solution):
+        result.error_message = f"Number of expressions do not match: {len(parsed_expression_1)} vs {len(parsed_solution)}"
+        result.success = False
+        return result
+    for i in range(len(parsed_expression_1)):
+        parsed_expression_1[i] = parsed_expression_1[i].expand()
+        parsed_solution[i] = parsed_solution[i].expand()
+    result.success = Counter(parsed_expression_1) == Counter(parsed_solution)
+    return result

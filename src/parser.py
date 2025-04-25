@@ -1,11 +1,12 @@
 import sympy as sp
 from sympy.parsing.sympy_parser import standard_transformations, implicit_multiplication_application, convert_xor, split_symbols_custom, _token_splittable
 import regex as re
+import itertools
 import numpy as np
 import argparse
 from typing import List, Tuple, Optional, Dict, Any, Union
 from dataclasses import dataclass, field, asdict
-from src.parser_rules import deletion_rules, replacement_rules, function_rules, nested_rules, final_rules, known_functions, intermediate_functions
+from src.parser_rules import deletion_rules, replacement_rules, function_rules, nested_rules, final_rules, known_functions, intermediate_functions, subsup_rewrite_pattern, subsup_pattern
 
 class ParseError(Exception):
     """Base class for all parsing related errors"""
@@ -56,7 +57,8 @@ class ParsingResult:
     parameter_dict: Optional[Dict[sp.Symbol, Any]] = None
     parameter_values: Optional[Dict[sp.Symbol, Any]] = None
     evaluation_results: Optional[List[Any]] = None
-    
+    function_dict: Optional[Dict[str, sp.Function]] = None
+
     @property
     def success(self) -> bool:
         """Check if parsing was successful"""
@@ -93,6 +95,15 @@ class ParsingResult:
                     key = str(key)
                 param_values[key] = value
             result_dict['parameter_values'] = param_values
+
+        if result_dict['function_dict']:
+            param_dict = {}
+            for key, value in result_dict['function_dict'].items():
+                # Convert sympy symbols to strings
+                if isinstance(key, sp.Function):
+                    key = str(key)
+                param_dict[key] = str(value)
+            result_dict['function_dict'] = param_dict
         
         # Handle complex numbers in evaluation_results
         if result_dict['evaluation_results']:
@@ -146,8 +157,8 @@ def latex_to_expression(latex_string: str) -> str:
         raise LatexConversionError("Empty LaTeX string provided", latex_string)
         
     try:
-        current_string = latex_string
-        
+        current_string = preprocess_super_and_sub(latex_string)
+
         # Apply deletion rules
         for pattern in deletion_rules:
             current_string = re.sub(pattern, "", current_string)
@@ -202,33 +213,172 @@ def latex_to_expression(latex_string: str) -> str:
     except Exception as e:
         raise LatexConversionError(f"Unexpected error during LaTeX conversion: {str(e)}", latex_string, None, e)
 
-def parse_parameters(parameter_str: str) -> Dict[str, sp.Symbol]:
-    """Parse parameter string to create symbol dictionary"""
-    if not parameter_str or parameter_str.strip() == "":
-        return {}
-    
-    # Clean and split parameter string
-    parameter_list = parameter_str.replace("$", "").replace(" ", "").replace("\\", "").split(",")
-    
-    # Remove any empty parameters
-    parameter_list = [p for p in parameter_list if p]
-    
-    # Handle subscripts
-    for i in range(len(parameter_list)):
-        parameter_list[i] = re.sub(r'_\{((?:[^{}]|\{(?1)\})*)\}', r'\1', parameter_list[i])
-    
-    # Create symbol dictionary
-    parameter_dict = {param: sp.symbols(param) for param in parameter_list}
-    
-    return parameter_dict
+def rewrite_super_and_sub(m):
+    base = m.group('base')
+    mods = m.group('mods')
 
-def expression_to_sympy(expr_string: str, parameter_dict: Dict[str, sp.Symbol] = None) -> sp.Expr:
+    raw_subs = []
+    raw_sups = []
+    raw_exps = []
+
+    for gm in subsup_pattern.finditer(mods):
+        if gm.group(1):  # apostrophes
+            raw_sups.extend(['prime'] * len(gm.group(1)))
+        elif gm.group(2):  # braced subscript {…}
+            # split on commas and strip any backslash
+            for part in re.split(r'\s*,\s*', gm.group(2)):
+                raw_subs.append(part.lstrip('\\'))
+        elif gm.group(3) or gm.group(4):  # single‐token subscript
+            tok = (gm.group(3) or gm.group(4)).lstrip('\\')
+            raw_subs.append(tok)
+        elif gm.group(5) or gm.group(6):  # allowed superscripts
+            tok = (gm.group(5) or gm.group(6)).lstrip('\\')
+            raw_sups.append(tok)
+        else:  # generic exponent
+            tok = (gm.group(7) or gm.group(8))
+            raw_exps.append(tok)
+
+    # 4. Deduplicate subscripts (keep first seen)
+    subs_unique = []
+    for tok in raw_subs:
+        if tok not in subs_unique:
+            subs_unique.append(tok)
+
+    # 5. Deduplicate superscripts except allow repeated ‘prime’
+    sups_unique = []
+    for tok in raw_sups:
+        if tok == 'prime' or tok not in sups_unique:
+            sups_unique.append(tok)
+
+    # 6. Reassemble: subscripts, allowed sups, then exponents
+    name = base
+    for tok in subs_unique:
+        name += f"_{tok}"
+    for tok in sups_unique:
+        name += f"_{tok}"
+    for tok in raw_exps:
+        name += f"^{{{tok}}}"
+
+    return name
+
+def preprocess_super_and_sub(s: str) -> str:
+    new_string = subsup_rewrite_pattern.sub(rewrite_super_and_sub, s)
+    return normalize_backslashes(new_string).strip()
+
+def string_permutations(templates: List[str],
+                        index_rules: Dict[str, List[str]]
+                       ) -> List[str]:
+    """
+    Given templates like ['a_i_j','U'] and 
+    index_rules={'i':['1','2'], 'j':['1','2','3']},
+    returns ['a_1_1','a_1_2',…,'a_2_3','U'] (U is untouched).
+    """
+    # 1) One regex per index to match "_i" only when followed by "_", "(" or end
+    idx_patterns = {
+        idx: re.compile(rf'_{re.escape(idx)}(?=(?:_|$|\())')
+        for idx in index_rules
+    }
+    keys = list(index_rules.keys())
+
+    result = []
+    for base in templates:
+        # 2) figure out which indices actually appear in this template
+        present = [idx for idx in keys if idx_patterns[idx].search(base)]
+        if not present:
+            # no indexed placeholders here → leave it alone
+            result.append(base)
+            continue
+
+        # 3) build only the necessary Cartesian product
+        combos = itertools.product(*(index_rules[idx] for idx in present))
+        for combo in combos:
+            s = base
+            # 4) do each replacement via a lambda to preserve the underscore
+            for idx, val in zip(present, combo):
+                pat = idx_patterns[idx]
+                s = pat.sub(lambda m, v=val: f'_{v}', s)
+            result.append(s)
+
+    return result
+
+def find_index_rules(string: str):
+    idx_sets = re.findall(
+        r'\(\s*([A-Za-z]\w*)\s*,\s*([^)]+?)\s*\)',
+        string
+    )
+    index_rules = {}
+    for idx, values in idx_sets:
+        # values is a string like r"\uparrow,\downarrow"
+        index_rules[idx] = [v.lstrip('\\') for v in re.split(r'\s*,\s*', values)]
+
+    #  Remove those index-rule substrings from the main text
+    string = re.sub(
+        r',?\s*\(\s*[A-Za-z]\w*\s*,\s*[^(),]+(?:\s*,\s*[^(),]+)*\s*\)',
+        '',
+        string
+    )
+    return string, index_rules
+
+def normalize_backslashes(s: str) -> str:
+    # turn '\\\\dagger' or '\\\\\\dagger' -> '\\dagger'
+    return re.sub(r'\\\\+', r'\\', s)
+
+def extract_symbol_and_nc_lists(function_str: str):
+    # 1) Extract and remove NC-flags
+    nc_raw = re.findall(r'\(\s*(.+?)\s*,\s*NC\s*\)', function_str)
+    function_str = re.sub(r'\(\s*.+?\s*,\s*NC\s*\)', '', function_str)
+    function_str, index_rules = find_index_rules(function_str)
+    
+    # 3) Split on commas to get just the raw function tokens
+    raw_funcs = [tok.strip() for tok in function_str.replace('$','').split(';') if tok.strip()]
+    nc_raw   = [tok.strip() for tok in nc_raw if tok.strip()]
+
+    # 4) **Normalize backslashes**, then canonicalize
+    normalized = [normalize_backslashes(f) for f in raw_funcs]
+    can_funcs  = [preprocess_super_and_sub(f) for f in normalized]
+
+    normalized_nc = [normalize_backslashes(f) for f in nc_raw]
+    can_nc        = [preprocess_super_and_sub(f) for f in normalized_nc]
+    # 5) Expand every canonical template against the index_rules
+    all_funcs = string_permutations(can_funcs, index_rules)
+    nc_funcs  = string_permutations(can_nc, index_rules)
+
+    all_funcs = all_funcs + nc_funcs
+    nc_funcs = set(nc_funcs)
+
+    return all_funcs, nc_funcs
+
+def parse_functions(function_str: str):
+    all_funcs, nc_funcs = extract_symbol_and_nc_lists(function_str)
+    function_dict = {}
+    for name in all_funcs:
+        is_nc = (name in nc_funcs)
+        function_dict[name] = sp.Function(name, commutative=not is_nc)
+
+    return function_dict
+
+def parse_parameters(parameter_str: str):
+    # parameter_str, index_rules = find_index_rules(parameter_str)
+    # can_params = [preprocess_super_and_sub(tok) for tok in parameter_str.replace('$','').split(';') if tok.strip()]
+    # can_params = [f.replace("\\","") for f in can_params]
+    # all_params = string_permutations(can_params, index_rules)
+    all_params, nc_params = extract_symbol_and_nc_lists(parameter_str)
+    # for the moment remove all backslashes from parameter names
+    all_params = [f.replace("\\","") for f in all_params]
+    nc_params = set([f.replace("\\","") for f in nc_params])
+    parameter_dict = {}
+    for name in all_params:
+        is_nc = (name in nc_params)
+        parameter_dict[name] = sp.Symbol(name, commutative=not is_nc)
+    return parameter_dict
+    
+def expression_to_sympy(expr_string: str, local_dict: Dict[str, sp.Symbol] = None) -> sp.Expr:
     """Convert expression string to SymPy expression"""
     if not expr_string or not expr_string.strip():
         raise SymPyConversionError("Empty expression provided", expr_string, "input_validation")
     
-    if parameter_dict is None:
-        parameter_dict = {}
+    if local_dict is None:
+        local_dict = {}
         
     try:
         # Handle equals sign
@@ -255,7 +405,7 @@ def expression_to_sympy(expr_string: str, parameter_dict: Dict[str, sp.Symbol] =
                          (implicit_multiplication_application,
                           convert_xor))
         try:
-            expr = sp.parsing.parse_expr(expr_string, local_dict=parameter_dict, transformations=transformations)
+            expr = sp.parsing.parse_expr(expr_string, local_dict=local_dict, transformations=transformations)
             return expr
         except Exception as e:
             raise SymPyConversionError(
@@ -266,7 +416,7 @@ def expression_to_sympy(expr_string: str, parameter_dict: Dict[str, sp.Symbol] =
     except Exception as e:
         raise SymPyConversionError(f"Unexpected error during conversion: {str(e)}", expr_string, "unknown", e)
 
-def solution_to_sympy(solution_string: str, parameter_str: str = "") -> ParsingResult:
+def solution_to_sympy(solution_string: str, parameter_str: str = "", function_str: str = "") -> ParsingResult:
     """Process a solution string to produce SymPy expressions"""
     result = ParsingResult()
     
@@ -274,14 +424,14 @@ def solution_to_sympy(solution_string: str, parameter_str: str = "") -> ParsingR
         # 1. Extract solution from boxed environment
         result.extracted_solutions = extract_solution(solution_string)
         
+        result.parameter_dict = parse_parameters(parameter_str)
+        result.function_dict = parse_functions(function_str)
+        local_dict = {**result.parameter_dict, **result.function_dict}
         # 2. Convert LaTeX to standard expressions
         result.intermediate_expressions = [latex_to_expression(s) for s in result.extracted_solutions]
         
-        # 3. Parse parameters
-        result.parameter_dict = parse_parameters(parameter_str)
-        
         # 4. Convert to SymPy expressions
-        result.sympy_expressions = [expression_to_sympy(s, result.parameter_dict) 
+        result.sympy_expressions = [expression_to_sympy(s, local_dict) 
                                    for s in result.intermediate_expressions]
         
         return result
@@ -302,7 +452,7 @@ def evaluate_expression(expr: sp.Expr, parameter_dict: Dict[sp.Symbol, Any]) -> 
         raise EvaluationError(f"Failed to evaluate expression: {str(e)}", expr, parameter_dict, e)
     
 def evaluate_solution(solution_str: str, parameter_str: str = "") -> ParsingResult:
-    """Full pipeline to evaluate a solution with parameters"""
+    """Full pipeline to evaluate a solution with parameters into a numeric result"""
     # Parse solution to SymPy
     result = solution_to_sympy(solution_str, parameter_str)
     if not result.success:

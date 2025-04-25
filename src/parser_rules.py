@@ -1,3 +1,4 @@
+import regex as re
 # Replace unicode characters with LaTeX commands (common in LLM responses, sourced from matharena)
 unicode_replacement_rules = {
     r"\u23a7": r"\\boxed{",
@@ -28,7 +29,9 @@ deletion_rules = [
     r"$",
     r"\\hline",
     r"\\vline",
-    r"\\pm"
+    r"\\pm",
+    r"\\langle",
+    r"\\rangle"
 ]
 
 # Replace LaTeX formatting with expression formatting
@@ -59,7 +62,6 @@ nested_rules = {
     r'\\sqrt\[(.*?)\]\{([^{}]*)\}' : r'(\2)**(1/(\1))',
     r'\\sqrt\{([^{}]*)\}' : r'(\1)**(1/2)',
     r'\^\{([^{}]*)\}' : r'^(\1)',
-    r'_\{((?:[^{}]|\{(?1)\})*)\}': r'\1',
     r'\\mathrm\{([^{}]*)\}' : r'\1',
     r'\\text\{([^{}]*)\}' : r'\1'
 }
@@ -90,3 +92,28 @@ sympy_functions = [
 ]
 
 known_functions = sympy_functions + list(intermediate_functions.keys())
+
+SUPERSCRIPTS = ['dagger', 'prime']
+
+mod_pattern = (
+    r"_\{[^}]+\}"                                   # subscript {...}
+    r"|_[\\][A-Za-z]+"                              # subscript command (\uparrow)
+    r"|_[^\^_\{\}\s]"                               # single-char subscript
+    r"|\^\{\\(?:" + "|".join(SUPERSCRIPTS) + r")\}" # allowed superscript {...}
+    r"|\^\\(?:"   + "|".join(SUPERSCRIPTS) + r")"   # allowed superscript single
+    r"|'+"
+    r"|\^\{[^}]+\}"                                 # any other superscript {...}
+    r"|\^[^\^_\{\}\s]"                              # any other superscript single
+)
+subsup_rewrite_pattern = re.compile(rf"(?P<base>\\?[A-Za-z]+)(?P<mods>(?:{mod_pattern})+)")
+
+subsup_pattern = re.compile(
+    r"('+)"                                          # g1: apostrophes
+    r"|_\{([^}]+)\}"                                 # g2: subscript {...}
+    r"|_\\([A-Za-z]+)"                               # g3: subscript command
+    r"|_([^\^_\{\}\s])"                              # g4: simple subscript
+    r"|\^\{\\(" + "|".join(SUPERSCRIPTS) + r")\}"    # g5: allowed sup {...}
+    r"|\^\\("    + "|".join(SUPERSCRIPTS) + r")"     # g6: allowed sup simple
+    r"|\^\{([^}]+)\}"                                # g7: generic sup {...}
+    r"|\^([^\^_\{\}\s])"                            # g8: generic sup char
+)

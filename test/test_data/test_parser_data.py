@@ -125,19 +125,19 @@ test_data = [
     ),
     TestParserData(
         solution_string="$\\boxed{u = m\\left(\\frac{2}{r^3} - \\frac{5}{a^3} + \\frac{3r^2}{a^5}\\right)\\cos \\theta; v = m\\left(\\frac{1}{r^3}+\\frac{5}{a^3}-\\frac{6r^2}{a^5}\\right)\\sin \\theta}$",
-        parameter_string="$m, r, \\theta, a, \\psi$",
+        parameter_string="$m; r; \\theta; a; \\psi$",
         expected_evaluation=[-0.0306499,-1.12344],
         description="Physics-related expressions with multiple variables and trigonometric functions"
     ),
     TestParserData(
         solution_string="$\\boxed{u = m \\cos \\theta \\left(\\frac{2}{r^3} - \\frac{5}{a^3} + \\frac{3r^2}{a^5}\\right); v = m\\sin \\theta\\left(\\frac{1}{r^3}+\\frac{5}{a^3}-\\frac{6r^2}{a^5}\\right)}$",
-        parameter_string="$m, r, \\theta, a, \\psi$",
+        parameter_string="$m; r; \\theta; a; \\psi$",
         expected_evaluation=[-0.0306499,-1.12344],
         description="Alternative formulation of physics expressions with different order of terms"
     ),
     TestParserData(
         solution_string="$\\boxed{y = e^{\\frac{x^3}{3}} + (2-e^{1/3})e^{-(1-x)/\\epsilon}}$",
-        parameter_string="$x, \\epsilon$",
+        parameter_string="$x;\\epsilon$",
         expected_evaluation=[15.4011],
         description="Sum of exponential expressions with epsilon parameter"
     ),
@@ -155,19 +155,19 @@ test_data = [
     ),
     TestParserData(
         solution_string="$\\boxed{A e^{(x^3)/3} + (B-Ae^{-1/3})e^{-x/\\sqrt{\\epsilon}}}$",
-        parameter_string="$x,\\epsilon,A,B$",
+        parameter_string="$x;\\epsilon;A;B$",
         expected_evaluation=[25.0121],
         description="Uniform boundary with bad implicit multiplication of E"
     ),
     TestParserData(
         solution_string="$\\boxed{y(x) = \\cos\\left(\\frac{1}{2\\epsilon} \\left( x\\sqrt{1+x^2} + \\text{arcsinh}(x) \\right)\\right)}$",
-        parameter_string="$x,\\epsilon$",
+        parameter_string="$x;\\epsilon$",
         expected_evaluation=[0.0544603],
         description="Text values in the solution string"
     ),
     TestParserData(
         solution_string="$\\boxed{y(x) = \\cos\\left(\\frac{1}{2\\epsilon} \\left( x\\sqrt{1+x^2} + \\mathrm{arcsinh}(x) \\right)\\right)}$",
-        parameter_string="$x,\\epsilon$",
+        parameter_string="$x;\\epsilon$",
         expected_evaluation=[0.0544603],
         description="Text values in the solution string"
     ),
@@ -179,19 +179,19 @@ test_data = [
     ),
     TestParserData(
         solution_string="$\\boxed{\\pi R \\delta_{ij}; 0; \\frac{\\pi R}{4} (\\delta_{ij}\\delta_{kl} + \\delta_{ik}\\delta_{jl} + \\delta_{il}\\delta_{jk})}$",
-        parameter_string="$n, R, \\delta_{ij}, \\delta_{kl}, \\delta_{ik}, \\delta_{jl}, \\delta_{il}, \\delta_{jk}$",
+        parameter_string="$n; R; \\delta_{ij}; \\delta_{kl}; \\delta_{ik}; \\delta_{jl}; \\delta_{il}; \\delta_{jk}$",
         expected_evaluation=[10.614264613057003, 0, 9.314767438067218],
         description="Kronecker delta with multiple solutions without spaces"
     ),
     TestParserData(
         solution_string="$\\boxed{y(x) = x^2 - 1 - \\sqrt{1 + (1 - x^2)^2} + 3 sech((\\frac{1 - x}{\\sqrt{2\\epsilon}} + \\tanh^{-1} \\sqrt{\\frac{2}{3}}))^2 + 3 sech((\\frac{1 + x}{\\sqrt{2\\epsilon}} + \\tanh^{-1} \\sqrt{\\frac{2}{3}}))^2 + 1}$$",
-        parameter_string="$x,\\epsilon$",
+        parameter_string="$x;\\epsilon$",
         expected_evaluation=[3.51664963],
         description="Squared sech function"
     ),
     TestParserData(
         solution_string="$\\boxed{y(x) = x^2 - 1 - \\sqrt{1 + (1 - x^2)^2} + 3 sech^2((\\frac{1 - x}{\\sqrt{2\\epsilon}} + \\tanh^{-1} \\sqrt{\\frac{2}{3}})) + 3 sech^2((\\frac{1 + x}{\\sqrt{2\\epsilon}} + \\tanh^{-1} \\sqrt{\\frac{2}{3}})) + 1}$$",
-        parameter_string="$x,\\epsilon$",
+        parameter_string="$x;\\epsilon$",
         expected_evaluation=[3.51664963],
         description="Squared sech function with interior square"
     ),
