@@ -7,7 +7,7 @@ def extract_boxed_equations(text):
         raise ValueError("No boxed equations found in the text.")
     elif len(box_matches) > 1:
         raise ValueError("Multiple boxed equations found in the text.")
-    return box_matches[0]
+    return box_matches[0].strip()  
 
 def post_processing(text):
     text = replace_bracket(text)
@@ -25,20 +25,19 @@ def isequal_numerics(LLM_output, ground_truth):
     try:
         LLM_output = extract_boxed_equations(LLM_output)
     except ValueError as e:
-        print(f"Error in extracting boxed equations: {e}")
-        raise ValueError("Error in parsing LLM's output.")
+        raise ValueError(f"Failed to extract boxed equations: {LLM_output}") from e
 
     # post_process the LLM output
     try:
         LLM_output = post_processing(LLM_output)
     except ValueError:
-        raise ValueError("Error in post-processing LLM's output.")
+        raise ValueError("Error in post-processing LLM's output.") from e
     
     # eval the LLM output
     try:
         LLM_output = eval(LLM_output)
     except Exception as e:
-        print(f"Error in evaluating LLM's output: {e}")
+        raise ValueError(f"Error in evaluating LLM's output: {e}")
         return False
 
     # eval the ground truth

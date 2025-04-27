@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Any, Optional, Tuple, Union
 import src.parser as parser
 import src.parser_cmt as parser_cmt
+import src.parser_lark as parser_lark
 from src.parser import ParsingResult
 from openai import OpenAI
 # Get the API key from environment variable
@@ -158,13 +159,39 @@ def evaluate_solution_cmt_numerics(query_string: str, solution_string: str, para
         return result
     result.model_response = model_response
 
-    # Will come back later
+    # TODO: Will come back later
     result.solution_result = None
     result.model_result = None
     
     # Compare evaluation results
     try:
         isequal_=parser_cmt.isequal_numerics(LLM_output=model_response, ground_truth=solution_string)
+        result.is_equivalent = isequal_
+        result.success = True
+        return result
+    except Exception as e:
+        result.error_message = f"Error comparing evaluation results: {str(e)}"
+        return result
+
+def evaluate_solution_cmt_symbolics(query_string: str, solution_string: str, parameter_string: str, model_name: str) -> EvaluationResult:
+    """Evaluate an LLM's solution against a reference solution."""
+    print("Entering evaluate_solution_cmt_symbolics")
+    result = EvaluationResult(model_name=model_name)
+    
+    # Get model response
+    model_response, query_error = query_llm(query_string, model_name)
+    if query_error:
+        result.error_message = model_response
+        return result
+    result.model_response = model_response
+
+    # TODO: Will come back later
+    result.solution_result = None
+    result.model_result = None
+    
+    # Compare evaluation results
+    try:
+        isequal_=parser_lark.isequal_symbolics(LLM_output=model_response, ground_truth=solution_string, noncomm_str = parameter_string)
         result.is_equivalent = isequal_
         result.success = True
         return result
