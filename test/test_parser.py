@@ -82,6 +82,8 @@ def test_parser():
                 print(f"    {Fore.YELLOW}Parameters: {parameter_str}{Style.RESET_ALL}")
                 if hasattr(result, 'intermediate_expressions'):
                     print(f"    {Fore.BLUE}Intermediate expressions: {result.intermediate_expressions}{Style.RESET_ALL}")
+                if hasattr(result, 'parameter_dict'):
+                    print(f"    {Fore.BLUE}Parameter dict: {result.parameter_dict}{Style.RESET_ALL}")
                 failed_cases.append(i)
                 all_pass = False
                 results.append({"id": i, "success": False, "pass": False, "time": elapsed_time})
@@ -110,6 +112,8 @@ def test_parser():
                 print(f"    {Fore.BLUE}Original: {solution_str}{Style.RESET_ALL}")
                 print(f"    {Fore.BLUE}Intermediate expressions: {result.intermediate_expressions}{Style.RESET_ALL}")
                 print(f"    {Fore.BLUE}Parameters: {param_display}{Style.RESET_ALL}")
+                if hasattr(result, 'parameter_dict'):
+                    print(f"    {Fore.BLUE}Parameter dict: {result.parameter_dict}{Style.RESET_ALL}")
                 if hasattr(result, 'sympy_expressions'):
                     print(f"    {Fore.BLUE}SymPy expressions: {result.sympy_expressions}{Style.RESET_ALL}")
                 failed_cases.append(i)
@@ -124,6 +128,8 @@ def test_parser():
             print(f"    {Fore.YELLOW}Parameters: {parameter_str}{Style.RESET_ALL}")
             if hasattr(result, 'intermediate_expressions'):
                 print(f"    {Fore.BLUE}Intermediate expressions: {result.intermediate_expressions}{Style.RESET_ALL}")
+            if hasattr(result, 'parameter_dict'):
+                print(f"    {Fore.BLUE}Parameter dict: {result.parameter_dict}{Style.RESET_ALL}")
             if hasattr(result, 'sympy_expressions'):
                 print(f"    {Fore.BLUE}SymPy expressions: {result.sympy_expressions}{Style.RESET_ALL}")
             failed_cases.append(i)

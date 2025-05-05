@@ -178,3 +178,7 @@ local_storage/*
 output/*
 
 dev/
+
+test/results/*
+
+fluids/
