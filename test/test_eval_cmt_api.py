@@ -22,7 +22,9 @@ sys.path.append(project_root)
 # API endpoint configuration
 API_BASE_URL = os.environ.get('API_BASE_URL', 'http://localhost:8080')
 # API_BASE_URL = os.environ.get('API_BASE_URL', 'http://localhost:5000')
-EVAL_ENDPOINT = f"{API_BASE_URL}/eval_cmt_numerics"
+
+# EVAL_ENDPOINT = f"{API_BASE_URL}/eval_cmt_numerics"
+EVAL_ENDPOINT = f"{API_BASE_URL}/eval_cmt_symbolics"
 
 def check_api_health():
     """Check if the API is running by calling the health endpoint"""
@@ -43,7 +45,8 @@ def check_api_health():
 def find_test_files():
     """Find all test_eval_*.json files in the test_data directory"""
     test_dir = Path(project_root) / "test" / "test_data"
-    test_files = list(test_dir.glob("test_eval*cmt*.json"))
+    # test_files = list(test_dir.glob("test_eval*cmt_[0-9].json"))
+    test_files = list(test_dir.glob("test_eval*cmt_symbolics*.json"))
     
     if not test_files:
         print(f"{Fore.YELLOW}No test_eval*cmt*.json files found in {test_dir}{Style.RESET_ALL}")

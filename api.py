@@ -317,6 +317,34 @@ def eval_cmt_endpoint():
             }
         }), 500
 
+# TODO: It's a bit cluttered now--- the previous one can be actually also absorbed into this one. Will come back later
+@app.route('/eval_cmt_symbolics', methods=['POST'])
+def eval_cmt_symbolics_endpoint():
+    """Evaluate an LLM's answer against a reference solution"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No JSON data provided", "success": False}), 400
+            
+        # Validate required fields
+        for key in ['input', 'solution', 'model']:
+            error, status_code = check_field(data, key)
+            if error:
+                return jsonify({"error": error, "success": False}), status_code
+        
+        # Get parameters with default empty string
+        parameter_str = data.get('parameters', '')
+        
+        # Evaluate the solution
+        result = evaluate_solution_cmt_symbolics(query_string=data['input'], solution_string=data['solution'], parameter_string=parameter_str, model_name=data['model'])
+        print('print: result')
+        print(result)
+        
+        # Convert the result to a dictionary and return
+        return jsonify(result.to_dict())
+    except Exception as e:
+        return jsonify({"error": f"Server error: {str(e)}", "success": False}), 500
+
 @app.route('/render', methods=['POST'])
 def render_endpoint():
     """API endpoint for rendering LaTeX"""
