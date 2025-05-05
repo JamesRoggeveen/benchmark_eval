@@ -6,12 +6,13 @@ import os
 import numpy as np
 import google.generativeai as genai
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional, Tuple, Union
+from typing import List, Dict, Any, Optional, Tuple, Union, Callable
 import src.parser as parser
 import src.parser_cmt as parser_cmt
 import src.parser_lark as parser_lark
 from src.parser import ParsingResult
 from openai import OpenAI
+from collections import Counter
 # Get the API key from environment variable
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
@@ -24,7 +25,8 @@ if not OPENAI_API_KEY:
 SUPPORTED_MODELS_GEMINI = {
     "Gemini 2.0 Flash Thinking": "gemini-2.0-flash-thinking-exp",
     "Gemini 2.0 Flash": "gemini-2.0-flash",
-    "Gemini 2.5 Flash Thinking": "gemini-2.5-pro-exp-03-25"
+    "Gemini 2.5 Flash Thinking": "gemini-2.5-pro-exp-03-25",
+    "Gemini 2.5 Pro Preview": "gemini-2.5-pro-preview-03-25"
 }
 
 SUPPORTED_MODELS_OPENAI = {
@@ -102,16 +104,16 @@ def query_gemini(input_string: str, model_name: str) -> Tuple[str, bool]:
     except Exception as e:
         return f"Error querying {model_name}: {str(e)}", True
 
-def evaluate_solution(query_string: str, solution_string: str, parameter_string: str, model_name: str) -> EvaluationResult:
+def evaluate_model(query_string: str, solution_string: str, parameter_string: str, function_str: str, model_name: str, parse_function: Callable, eval_function: Callable) -> EvaluationResult:
     """Evaluate an LLM's solution against a reference solution."""
     result = EvaluationResult(model_name=model_name)
     
     # Process reference solution
-    solution_result = parser.evaluate_solution(solution_string, parameter_string)
-    if not solution_result.success or not solution_result.evaluation_results:
-        result.error_message = f"Failed to evaluate reference solution: {solution_result.error_message}"
+    solution_result = parse_function(solution_string, parameter_string, function_str)
+    if not solution_result.success:
+        result.error_message = f"Failed to parse reference solution: {solution_result.error_message}"
         return result
-    
+
     result.solution_result = solution_result
     
     # Get model response
@@ -123,29 +125,27 @@ def evaluate_solution(query_string: str, solution_string: str, parameter_string:
     result.model_response = model_response
     
     # Process model response
-    model_result = parser.evaluate_solution(model_response, parameter_string)
-    if not model_result.success or not model_result.evaluation_results:
-        result.error_message = f"Failed to evaluate model response: {model_result.error_message}"
+    model_result = parse_function(model_response, parameter_string, function_str)
+    if not model_result.success:
+        result.error_message = f"Failed to parse model response: {model_result.error_message}"
         return result
     
     result.model_result = model_result
     
     # Compare evaluation results
-    try:
-        solution_array = np.array(solution_result.evaluation_results, dtype=np.float64)
-        model_array = np.array(model_result.evaluation_results, dtype=np.float64)
-        
-        # Check if shape of arrays match
-        if solution_array.shape != model_array.shape:
-            result.error_message = f"Evaluation shapes don't match: {solution_array.shape} vs {model_array.shape}"
-            return result
-        
-        result.is_equivalent = np.allclose(model_array, solution_array, atol=1e-6)
-        result.success = True
-        return result
-    except Exception as e:
-        result.error_message = f"Error comparing evaluation results: {str(e)}"
-        return result
+    return eval_function(result)
+
+def evaluate_solution(query_string: str, solution_string: str, parameter_string: str, model_name: str) -> EvaluationResult:
+    print("Entering evaluate_solution")
+    return evaluate_model(query_string, solution_string, parameter_string, "", model_name, parser.evaluate_solution, is_equivalent_numerics)
+
+def evaluate_numeric_solution(query_string: str, solution_string: str, model_name: str) -> EvaluationResult:
+    print("Entering evaluate_numeric_solution")
+    return evaluate_model(query_string, solution_string, "", "", model_name, parser.parse_numeric_solution, is_equivalent_numerics)
+
+def evaluate_functional_solution(query_string: str, solution_string: str, parameter_string: str, function_string: str, model_name: str) -> EvaluationResult:
+    print("Entering evaluate_functional_solution")
+    return evaluate_model(query_string, solution_string, parameter_string, function_string, model_name, parser.solution_to_sympy, is_equivalent_functional_form)
 
 def evaluate_solution_cmt_numerics(query_string: str, solution_string: str, parameter_string: str, model_name: str) -> EvaluationResult:
     """Evaluate an LLM's solution against a reference solution."""
@@ -193,8 +193,87 @@ def evaluate_solution_cmt_symbolics(query_string: str, solution_string: str, par
     try:
         isequal_=parser_lark.isequal_symbolics(LLM_output=model_response, ground_truth=solution_string, noncomm_str = parameter_string)
         result.is_equivalent = isequal_
+    
+def is_equivalent_functional_form(result: EvaluationResult) -> EvaluationResult:
+    """Compare two sets of latex expressions using Counters. This hash map comparison relies on the fact that
+    the resulting sympy strings must be identical for the two expressions to be equivalent. This is a potential point of failure but results from the fact that Sympy equals does not work for expressions with non-commutative symbols. For now we simply expand all sympy expressions but in the future we should build a more robust set of rewrite rules to ensure equivalent expressions render the same Sympy expression."""
+
+    try:
+        # Get sympy expressions
+        model_exprs = result.model_result.sympy_expressions
+        solution_exprs = result.solution_result.sympy_expressions
+        
+        # Validate expressions exist
+        if not model_exprs or not solution_exprs:
+            result.error_message = "One or both expressions failed to parse to SymPy expressions"
+            result.success = False
+            return result
+            
+        # Check expression counts match
+        if len(model_exprs) != len(solution_exprs):
+            result.error_message = f"Number of expressions do not match: {len(model_exprs)} vs {len(solution_exprs)}"
+            result.success = True
+            return result
+            
+        try:
+            model_exprs = [expr.expand() for expr in model_exprs]
+            solution_exprs = [expr.expand() for expr in solution_exprs]
+        except Exception as e:
+            result.error_message = f"Error expanding expressions: {str(e)}"
+            result.success = False
+            return result
+            
+        # Compare expressions using Counter
+        result.is_equivalent = Counter(model_exprs) == Counter(solution_exprs)
+        result.success = True
+        return result
+        
+    except Exception as e:
+        result.error_message = f"Unexpected error during comparison: {str(e)}"
+        return result
+    
+def is_equivalent_numerics(result: EvaluationResult)->EvaluationResult:
+    try:
+        # Custom sort key that handles both complex and float values
+        def sort_key(x):
+            if hasattr(x, '__getitem__'):
+                val = x[0]
+            else:
+                val = x
+            # For complex numbers, sort by real part then imaginary part
+            if isinstance(val, complex):
+                return (val.real, val.imag)
+            return (float(val), 0)  # Convert to float and use 0 for imaginary part
+            
+        model_solution = sorted(result.model_result.evaluation_results, key=sort_key)
+        solution_solution = sorted(result.solution_result.evaluation_results, key=sort_key)
+        
+        # Check if shape of arrays match
+        if len(model_solution) != len(solution_solution):
+            result.error_message = f"Evaluation shapes don't match: {len(solution_solution)} vs {len(model_solution)}"
+            result.success = True
+            result.is_equivalent = False
+            return result
+        equivalent = True
+
+        for model_element, solution_element in zip(model_solution, solution_solution):
+            # Check if both are tuples/lists or both are scalar values
+            if hasattr(model_element, '__len__') != hasattr(solution_element, '__len__'):
+                # One is tuple/list and other is scalar
+                result.error_message = f"Mismatched types: one is tuple/list and other is scalar"
+                result.success = True
+                result.is_equivalent = False
+                return result
+            elif hasattr(model_element, '__len__'):
+                # Both are tuples/lists, check lengths match
+                if len(model_element) != len(solution_element):
+                    result.error_message = f"Evaluation shapes don't match: {len(solution_element)} vs {len(model_element)}"
+                    result.success = True
+                    result.is_equivalent = False
+                    return result
+            equivalent *= np.allclose(model_element, solution_element, atol=1e-6)
+        result.is_equivalent = bool(equivalent)
         result.success = True
         return result
     except Exception as e:
         result.error_message = f"Error comparing evaluation results: {str(e)}"
-        return result
