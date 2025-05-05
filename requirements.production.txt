@@ -1,0 +1,11 @@
+# Production dependencies - minimum required packages for the application
+Flask==2.3.3
+gunicorn==20.1.0
+google-cloud-storage==2.14.0
+pdf2image==1.16.3
+sympy==1.13.3
+numpy==2.2.4
+regex==2024.11.6
+google-generativeai==0.8.5
+requests==2.31.0
+openai==1.73.0
