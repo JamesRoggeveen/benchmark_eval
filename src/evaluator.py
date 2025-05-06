@@ -259,13 +259,13 @@ def is_equivalent_numerics(result: EvaluationResult)->EvaluationResult:
         # Custom sort key that handles both complex and float values
         def sort_key(x):
             if hasattr(x, '__getitem__'):
-                val = x[0]
-            else:
-                val = x
-            # For complex numbers, sort by real part then imaginary part
-            if isinstance(val, complex):
-                return (val.real, val.imag)
-            return (float(val), 0)  # Convert to float and use 0 for imaginary part
+                # For tuples/lists, convert each element to float and return as tuple for sorting
+                return tuple(float(val) if not isinstance(val, complex) else (val.real, val.imag) 
+                            for val in x)
+            # For single values
+            if isinstance(x, complex):
+                return (x.real, x.imag)
+            return (float(x), 0)  # Convert to float and use 0 for imaginary part
             
         model_solution = sorted(result.model_result.evaluation_results, key=sort_key)
         solution_solution = sorted(result.solution_result.evaluation_results, key=sort_key)
