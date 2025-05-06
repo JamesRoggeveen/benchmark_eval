@@ -68,10 +68,10 @@ test_data = [
         expected_result=False,
         description="Algebraic expression with multiple non-commuting operators and regular operators with order of non-commuting terms switched"),
     TestParserFuncData(
-        comparison_string="\\boxed{-t p^{\\dagger}_{i\\sigma}p_{j\\sigma}-U (n_{i\\uparrow}-\\frac{1}{2})(n_{i\\downarrow}-\\frac{1}{2})-\\mu ( n_{i\\uparrow}-n_{i\\downarrow}) -\\mu L}",
-        solution_string="\\boxed{-t p^{\\dagger}_{i\\sigma}p_{j\\sigma}-U (n_{i\\uparrow}-\\frac{1}{2})(n_{i\\downarrow}-\\frac{1}{2})-\\mu ( n_{i\\uparrow}-n_{i\\downarrow}) -\\mu L}",
+        comparison_string="\\boxed{-t p^{\\dagger}_{i,\\sigma}p_{j,\\sigma}-U (n_{i,\\uparrow}-\\frac{1}{2})(n_{i,\\downarrow}-\\frac{1}{2})-\\mu ( n_{i,\\uparrow}-n_{i,\\downarrow}) -\\mu L}",
+        solution_string="\\boxed{-t p^{\\dagger}_{i,\\sigma}p_{j,\\sigma}-U (n_{i,\\uparrow}-\\frac{1}{2})(n_{i,\\downarrow}-\\frac{1}{2})-\\mu ( n_{i,\\uparrow}-n_{i,\\downarrow}) -\\mu L}",
         function_string="",
-        parameter_string="t; p^\\dagger_{s\\sigma}; p_{s\\sigma}; U; n_{s\\uparrow}; n_{s\\downarrow}; \\mu; L; (s, i,j)",
+        parameter_string="t; p^\\dagger_{s,\\sigma}; p_{s,\\sigma}; U; n_{s,\\uparrow}; n_{s,\\downarrow}; \\mu; L; (s, i,j)",
         expected_result=True,
         description="Algebraic expression with multiple non-commuting operators and regular operators with order of non-commuting terms switched"), 
 ]

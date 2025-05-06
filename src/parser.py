@@ -1,5 +1,6 @@
 import sympy as sp
 from sympy.parsing.sympy_parser import standard_transformations, implicit_multiplication_application, convert_xor, split_symbols_custom, _token_splittable
+from sympy.physics.quantum.dagger import Dagger
 import regex as re
 import ast
 import itertools
@@ -730,7 +731,89 @@ def parse_parameters(parameter_str: str):
         is_nc = (name in nc_params)
         parameter_dict[name] = sp.Symbol(name, commutative=not is_nc)
     return parameter_dict
-    
+
+def simplify_fermionic_expression(expr: sp.Expr,
+    operator_dict: Dict[str, Union[sp.Symbol, sp.Function]]
+) -> sp.Expr:
+    """
+    Normal-order only those a, a† pairs for which both forms exist
+    in operator_dict, applying
+      {a_i, a_j}   = 0,
+      {a_i†, a_j†} = 0,
+      {a_i, a_j†}  = δ_{ij},
+    but only at the top-level of each term so we don't loop forever.
+    The “natural” order of different modes is taken from base_heads.
+    """
+
+    # 1) collect your modes in the order you want
+    valid      = [n for n in operator_dict
+                  if not n.endswith('_dagger') and f"{n}_dagger" in operator_dict]
+    base_heads = [operator_dict[n]           for n in valid]
+    dag_heads  = [operator_dict[f"{n}_dagger"] for n in valid]
+
+    # maps head → its position in base_heads
+    idx_base = {h:i for i,h in enumerate(base_heads)}
+    idx_dag  = {h:i for i,h in enumerate(dag_heads)}
+
+    # 2) helper to pull off the “head” (Symbol or .func)
+    def head(x):
+        if x in base_heads or x in dag_heads:
+            return x
+        if hasattr(x, 'func'):
+            return x.func
+        return None
+
+    # 3) one‐step rewrite for a single Mul
+    def _rewrite_mul(mul: sp.Mul) -> sp.Expr:
+        args = list(mul.args)
+        for i in range(len(args)-1):
+            A, B = args[i], args[i+1]
+            hA, hB = head(A), head(B)
+
+            # (i)  base–base: a_i a_j → − a_j a_i if out of order, zero if same
+            if hA in base_heads and hB in base_heads:
+                if idx_base[hA] == idx_base[hB]:
+                    return sp.Integer(0)
+                if idx_base[hA] > idx_base[hB]:
+                    new = args[:i] + [B, A] + args[i+2:]
+                    return -sp.Mul(*new)
+                continue
+
+            # (ii) dag–dag: a_i† a_j† → − a_j† a_i† if out of order, zero if same
+            if hA in dag_heads and hB in dag_heads:
+                if idx_dag[hA] == idx_dag[hB]:
+                    return sp.Integer(0)
+                if idx_dag[hA] > idx_dag[hB]:
+                    new = args[:i] + [B, A] + args[i+2:]
+                    return -sp.Mul(*new)
+                continue
+
+            # (iii) base–dag: a_i a_j† → δ_{ij} − a_j† a_i
+            if hA in base_heads and hB in dag_heads:
+                ib, jd = idx_base[hA], idx_dag[hB]
+                term = (1 - B*A) if ib == jd else -B*A
+                new = args[:i] + [term] + args[i+2:]
+                return sp.Mul(*new)
+
+        return mul
+
+    # 4) drive each Mul to its fixed point
+    def simplify_term(t: sp.Expr) -> sp.Expr:
+        if not isinstance(t, sp.Mul):
+            return t
+        cur = t
+        while True:
+            nxt = _rewrite_mul(cur)
+            if nxt == cur:
+                return cur
+            cur = nxt
+
+    # 5) distribute over sums
+    if expr.is_Add:
+        return sum(simplify_term(term) for term in expr.args)
+    else:
+        return simplify_term(expr)
+
 def expression_to_sympy(expr_string: str, local_dict: Dict[str, sp.Symbol] = None) -> sp.Expr:
     """Convert expression string to SymPy expression"""
     if not expr_string or not expr_string.strip():

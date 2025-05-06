@@ -11,7 +11,8 @@ project_root = os.path.abspath(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.append(project_root)
 
 # Now import from src
-from src.evaluator import compare_latex_expressions
+from src.evaluator import is_equivalent_functional_form, EvaluationResult
+from src.parser import solution_to_sympy
 from test_data.test_parser_func_data import test_data
 
 def test_parser_func():
@@ -40,7 +41,10 @@ def test_parser_func():
         try:
             # Run the test
             print(f"  {Fore.BLUE}⏳ Comparing expressions...{Style.RESET_ALL}")
-            result = compare_latex_expressions(comparison_str, solution_str, parameter_str, function_str)
+            eval_result = EvaluationResult()
+            eval_result.solution_result = solution_to_sympy(solution_str, parameter_str, function_str)
+            eval_result.model_result = solution_to_sympy(comparison_str, parameter_str, function_str)
+            result = is_equivalent_functional_form(eval_result)
             
             # Calculate elapsed time
             elapsed_time = time.time() - start_time

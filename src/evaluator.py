@@ -193,6 +193,10 @@ def evaluate_solution_cmt_symbolics(query_string: str, solution_string: str, par
     try:
         isequal_=parser_lark.isequal_symbolics(LLM_output=model_response, ground_truth=solution_string, noncomm_str = parameter_string)
         result.is_equivalent = isequal_
+        result.success = True
+        return result
+    except Exception as e:
+        result.error_message = f"Error comparing evaluation results: {str(e)}"
     
 def is_equivalent_functional_form(result: EvaluationResult) -> EvaluationResult:
     """Compare two sets of latex expressions using Counters. This hash map comparison relies on the fact that
@@ -202,6 +206,7 @@ def is_equivalent_functional_form(result: EvaluationResult) -> EvaluationResult:
         # Get sympy expressions
         model_exprs = result.model_result.sympy_expressions
         solution_exprs = result.solution_result.sympy_expressions
+        local_dict = {**result.solution_result.parameter_dict, **result.solution_result.function_dict}
         
         # Validate expressions exist
         if not model_exprs or not solution_exprs:
@@ -214,17 +219,34 @@ def is_equivalent_functional_form(result: EvaluationResult) -> EvaluationResult:
             result.error_message = f"Number of expressions do not match: {len(model_exprs)} vs {len(solution_exprs)}"
             result.success = True
             return result
-            
+    
+
         try:
-            model_exprs = [expr.expand() for expr in model_exprs]
-            solution_exprs = [expr.expand() for expr in solution_exprs]
+            n = len(model_exprs)
+            expression_difference = []
+            if any('_dagger' in key for key in local_dict.keys()):
+                fermionic_flag = True
+            else:
+                fermionic_flag = False
+            results = np.zeros((n,n))
+            for i,expr1 in enumerate(model_exprs):
+                for j,expr2 in enumerate(solution_exprs):
+                    diff = (expr1 - expr2).doit()
+                    if fermionic_flag:
+                        diff = parser.simplify_fermionic_expression(diff, local_dict)
+                    expression_difference.append(diff)
+                    results[i,j] = (diff.simplify() == 0)
+            result.is_equivalent = all(any(row) for row in results)
+        # try:
+        #     model_exprs = [expr.expand() for expr in model_exprs]
+        #     solution_exprs = [expr.expand() for expr in solution_exprs]
         except Exception as e:
             result.error_message = f"Error expanding expressions: {str(e)}"
             result.success = False
             return result
             
         # Compare expressions using Counter
-        result.is_equivalent = Counter(model_exprs) == Counter(solution_exprs)
+        # result.is_equivalent = Counter(model_exprs) == Counter(solution_exprs)
         result.success = True
         return result
         

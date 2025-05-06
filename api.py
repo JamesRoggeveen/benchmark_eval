@@ -14,7 +14,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from src.latex_render import render_latex, LatexError
 from src.storage import get_storage_backend
 import src.parser as parser
-from src.evaluator import evaluate_solution, evaluate_numeric_solution, evaluate_functional_solution, SUPPORTED_MODELS, query_llm, evaluate_solution_cmt_numerics
+from src.evaluator import evaluate_solution, evaluate_numeric_solution, evaluate_functional_solution, SUPPORTED_MODELS, query_llm, evaluate_solution_cmt_numerics, evaluate_solution_cmt_symbolics
 
 app = Flask(__name__)
 
